@@ -37,7 +37,7 @@ _LUCONFIG lu0cfg;
 static _Settings *settings;
 
 struct CMDS Lu0cmds[] = {
-    {"SerialPorts",             doSerialPorts, },
+    {"HCIDevNumber",             doHCIDevNumber, },
     {"SerialProtocol",	        doSerialProtocol, },    
     {"BDAddress",               doBDAddress, },
     {"LogFileName",	 	          doLogFileName, },
@@ -109,17 +109,7 @@ int main(int argc, char *argv[]) {
 
 
 	// Get HCI device.
-	int device = hci_open_dev(1);
-	if ( device < 0 ) {
-		device = hci_open_dev(0);
-		if (device >= 0) {
-   			printf("Using hci0\n");
-			}
-		}
-	else {
-   		printf("Using hci1\n");
-		}
-
+	int device = hci_open_dev(settings->HCIDevNumber);
 	if ( device < 0 ) {
 		perror("Failed to open HCI device.");
 		return 0;
@@ -272,15 +262,14 @@ void usage(char * argv[]) {
 
 
 // *********************************************************************
-CMDPARSING_RES doSerialPorts(_LUCONFIG * lucfg, int argc, char *argv[]) {
+CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]) {
   _Settings *settings = (_Settings *)lucfg->Settings;
 
   DBG_MAX("%d %s", argc, argv[1]);
 
   if (argc>1) {
-    strncpy(settings->SerialPort, argv[1], STDLEN-1);
-    settings->SerialPort[STDLEN-1] = '\0';
-    DBG_MIN("SerialPort 0 = %s", settings->SerialPort);
+    settings->HCIDevNumber=atoi(argv[1]);
+    DBG_MIN("HCIDevNumber %d", settings->HCIDevNumber);
     }
   return CMD_EXECUTED_OK;
 }
