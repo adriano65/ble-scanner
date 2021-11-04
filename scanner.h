@@ -25,9 +25,12 @@ union _serprot_map {
         struct _serprot_bits bit_vars;      // data output as single bit field.
 };
 
-typedef struct _Settings {
+#include "scanner_parser.h"
+
+typedef struct __Settings {
   unsigned int HCIDevNumber;
   char BDAddress[STDLEN];
+  _ble_data *ble_data;
   unsigned int SerialTMO;
   union _serprot_map map;
   pthread_t SerialThread;

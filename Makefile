@@ -17,14 +17,16 @@ clean:
 #####################################################################
 # Linking
 
-$(TARGET): $(OBJS)/$(TARGET).o $(OBJS)/$(TARGET)_util.o
-	$(CC) $(CCOPTS) $(OBJS)/$(TARGET).o $(OBJS)/$(TARGET)_util.o $(LIBS) -o $(TARGET)
+$(TARGET): $(OBJS)/$(TARGET).o $(OBJS)/$(TARGET)_util.o $(OBJS)/$(TARGET)_parser.o
+	$(CC) $(CCOPTS) $(OBJS)/$(TARGET).o $(OBJS)/$(TARGET)_parser.o $(OBJS)/$(TARGET)_util.o $(LIBS) -o $(TARGET)
 
 # Compiling
 
 $(OBJS)/$(TARGET).o: $(TARGET).c $(TARGET).h
 	$(CC) $(CCOPTS) $(TARGET).c -c -o $(OBJS)/$(TARGET).o
 
+$(OBJS)/$(TARGET)_parser.o: $(TARGET)_parser.c $(TARGET)_parser.h
+	$(CC) $(CCOPTS) $(TARGET)_parser.c -c -o $(OBJS)/$(TARGET)_parser.o
+
 $(OBJS)/$(TARGET)_util.o: $(TARGET)_util.c $(TARGET)_util.h
 	$(CC) $(CCOPTS) $(TARGET)_util.c -c -o $(OBJS)/$(TARGET)_util.o
-

@@ -37,7 +37,7 @@ _LUCONFIG lu0cfg;
 static _Settings *settings;
 
 struct CMDS Lu0cmds[] = {
-    {"HCIDevNumber",             doHCIDevNumber, },
+    {"HCIDevNumber",            doHCIDevNumber, },
     {"SerialProtocol",	        doSerialProtocol, },    
     {"BDAddress",               doBDAddress, },
     {"LogFileName",	 	          doLogFileName, },
@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGINT, HandleSig);
 	signal(SIGTERM, HandleSig);
-
+  scanner_parser_init(settings);
 
   lu0cfg.Running = TRUE;
 
@@ -184,8 +184,6 @@ int main(int argc, char *argv[]) {
 	int len;
 
   int count = 0;
-  // Keep scanning until we see nothing for 10 secs or we have seen more than 1000 of advertisements.  Then exit.
-  // We exit in this case because the scan may have failed or stopped. Higher level code can restart
 	// last_detection_time - now < 10
 	while ( lu0cfg.Running ) {
 		len = read(device, buf, sizeof(buf));
@@ -198,23 +196,13 @@ int main(int argc, char *argv[]) {
 				void * offset = meta_event->data + 1;
 				while ( reports_count-- ) {
 					le_adv_info = (le_advertising_info *)offset;
-					char addr[18];
-					ba2str(&(le_adv_info->bdaddr), addr);
-
-          if (!strcmp(addr, settings->BDAddress) ) {
-            printf("MAC %s, RSSI %d, data", addr, (int8_t)le_adv_info->data[le_adv_info->length]);
-            for (int i = 0; i < le_adv_info->length; i++) {
-              printf(" %02X", (unsigned char)le_adv_info->data[i]);
-              }
-            printf("\n");
-            }
-
+          if ( ble_fill_rxbuf(le_adv_info) ) { ; }
 					offset = le_adv_info->data + le_adv_info->length + 2;
 					}
 				}
       else { DBG_MIN("meta_event->subevent %d\n", meta_event->subevent); }
 			}
-    SLEEPMS(800);
+    SLEEPMS(300);
 		}
 
 	// Disable scanning.
@@ -307,18 +295,3 @@ CMDPARSING_RES doLogFileName(_LUCONFIG * lucfg, int argc, char *argv[]) {
   else return CMDPARSING_KO;
   return CMD_EXECUTED_OK;
 }
-
-CMDPARSING_RES doWarning_sound_volume(_LUCONFIG * lucfg, int argc, char *argv[]) {
-  _Settings *settings = (_Settings *)lucfg->Settings;
-
-  DBG_MAX("%d %s", argc, argv[1]);
-  if (argc>1) {
-    //settings->dsm_data->warning_volume=atoi(argv[1]);
-    //DBG_MIN("Warning_sound_volume = %d", settings->dsm_data->warning_volume);
-    //set_dsm_data(settings[0]);
-    }
-
-  return CMD_EXECUTED_OK;
-}
-
-
