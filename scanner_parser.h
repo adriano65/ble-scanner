@@ -116,6 +116,7 @@ union _dsm_map {
 typedef struct _ble_dat {
   uint8_t sensorDataID[3];
   uint16_t temperature;
+  uint16_t humidity;
   uint16_t luminosity;
 
   uint8_t battery;

@@ -39,7 +39,7 @@ static _Settings *settings;
 struct CMDS Lu0cmds[] = {
     {"HCIDevNumber",            doHCIDevNumber, },
     {"SerialProtocol",	        doSerialProtocol, },    
-    {"BDAddress",               doBDAddress, },
+    {"BDAddresses",             doBDAddresses, },
     {"LogFileName",	 	          doLogFileName, },
     {"",        		            donull, },
     {NULLCHAR,			            donull, },
@@ -257,20 +257,39 @@ CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>1) {
     settings->HCIDevNumber=atoi(argv[1]);
-    DBG_MIN("HCIDevNumber %d", settings->HCIDevNumber);
+    DBG_MIN("HCIDevNumber[0] %d", settings->HCIDevNumber);
     }
   return CMD_EXECUTED_OK;
 }
 
-CMDPARSING_RES doBDAddress(_LUCONFIG * lucfg, int argc, char *argv[]) {
+CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
   _Settings *settings = (_Settings *)lucfg->Settings;
 
   DBG_MAX("%d %s", argc, argv[1]);
 
+  if (argc>6) {
+    settings->BDAddressEn[2]=atoi(argv[6]);
+    }
+  if (argc>5) {
+    strncpy(settings->BDAddress[2], argv[5], STDLEN-1);
+    settings->BDAddress[2][STDLEN-1] = '\0';
+    DBG_MIN("BDAddress 2 = %s", settings->BDAddress[2]);
+    }
+  if (argc>4) {
+    settings->BDAddressEn[1]=atoi(argv[4]);
+    }
+  if (argc>3) {
+    strncpy(settings->BDAddress[1], argv[3], STDLEN-1);
+    settings->BDAddress[1][STDLEN-1] = '\0';
+    DBG_MIN("BDAddress 1 = %s", settings->BDAddress[1]);
+    }
+  if (argc>2) {
+    settings->BDAddressEn[0]=atoi(argv[2]);
+    }
   if (argc>1) {
-    strncpy(settings->BDAddress, argv[1], STDLEN-1);
-    settings->BDAddress[STDLEN-1] = '\0';
-    DBG_MIN("BDAddress 0 = %s", settings->BDAddress);
+    strncpy(settings->BDAddress[0], argv[1], STDLEN-1);
+    settings->BDAddress[0][STDLEN-1] = '\0';
+    DBG_MIN("BDAddress 0 = %s", settings->BDAddress[0]);
     }
   
   return CMD_EXECUTED_OK;

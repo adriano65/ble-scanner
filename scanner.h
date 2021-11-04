@@ -29,7 +29,8 @@ union _serprot_map {
 
 typedef struct __Settings {
   unsigned int HCIDevNumber;
-  char BDAddress[STDLEN];
+  char BDAddress[5][STDLEN];
+  int BDAddressEn[5];
   _ble_data *ble_data;
   unsigned int SerialTMO;
   union _serprot_map map;
@@ -45,7 +46,7 @@ void End(void);
 
 CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]);
 CMDPARSING_RES doSerialProtocol(_LUCONFIG * lucfg, int argc, char *argv[]);
-CMDPARSING_RES doBDAddress(_LUCONFIG * lucfg, int argc, char *argv[]);
+CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]);
 CMDPARSING_RES doLogFileName(_LUCONFIG * lucfg, int argc, char *argv[]);
 
 #endif
