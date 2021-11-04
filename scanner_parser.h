@@ -114,31 +114,11 @@ union _dsm_map {
 };
 
 typedef struct _ble_dat {
-  uint8_t verifyCode;
-  uint16_t seq_num;
-  uint8_t mfg_code_hi;
-  uint8_t mfg_code_low;
-  SC_FUNCTION func_code;
-  uint32_t warningID;
-  uint8_t flag_state;
-  uint8_t warning_type;
-  uint8_t fatigue_degree;
-  uint32_t reserved;
-  uint8_t vehicle_speed;
-  uint16_t elevation;
-  uint32_t lat;
-  uint32_t lon;
-  uint8_t year;
-  uint8_t month;
-  uint8_t day;
-  uint8_t hour;
-  uint8_t minute;
-  uint8_t second;
-  uint16_t vehicle_state;
-  uint8_t warning_mmedia_tot;
-  uint8_t multimedia;
+  uint8_t sensorDataID[3];
+  uint16_t temperature;
+  uint16_t luminosity;
 
-  uint8_t warning_volume;
+  uint8_t battery;
 
 } _ble_data;
 

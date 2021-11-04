@@ -277,7 +277,21 @@ SC_PARSEBUFFER scanner_frame_parser() {
           break;
         
         case 2:
-          printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
+          //printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
+          idx++; // jumps over 0xFF
+          ble_data.sensorDataID[0]=le_adv_inf->data[idx++];
+          ble_data.sensorDataID[1]=le_adv_inf->data[idx++];
+          ble_data.sensorDataID[2]=le_adv_inf->data[idx++];
+          printf("%02X%02X%02X\n", ble_data.sensorDataID[0], ble_data.sensorDataID[1], ble_data.sensorDataID[2]);   // 0x160F03
+          ble_data.temperature=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
+          printf("temp %.01f\n", (float)ble_data.temperature/10);
+          ble_data.luminosity=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
+          printf("lumin. %d lux\n", ble_data.luminosity);
+          ble_data.battery=le_adv_inf->data[idx]; idx++;
+          printf("batt. %.01f\n", (float)(ble_data.battery)/10);
+
+          idx++;
+          n=len;
           break;
 
         case 3:

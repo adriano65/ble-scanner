@@ -205,8 +205,7 @@ int main(int argc, char *argv[]) {
     SLEEPMS(300);
 		}
 
-	// Disable scanning.
-
+	DBG_MIN("Disable scanning.");
 	memset(&scan_cp, 0, sizeof(scan_cp));
 	scan_cp.enable = 0x00;	// Disable flag.
 
