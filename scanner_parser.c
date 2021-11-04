@@ -13,13 +13,13 @@
 #include <sys/msg.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>  
-#include <sys/time.h>  
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <time.h>  
 
 #include "scanner_util.h"
 #include "scanner.h"
@@ -60,6 +60,7 @@ void scanner_parser_init(void * param) {
   //le_adv_inf->data=(uint8_t *)malloc(128);
   pthread_create(&frameThread, NULL, scanner_parserThread, (void *)pSettings);
 }
+
 
 void *scanner_parserThread(void *param) {
   _Settings *pSettings = (_Settings *)param;
@@ -263,8 +264,14 @@ SC_PARSEBUFFER scanner_frame_parser() {
     }
   printf("\n\n");
   #endif
+	time_t timenow;
+	struct tm * actual;
+
+	time(&timenow) ;       // time since 1970
+	actual = localtime(&timenow);
+
   DBG_MAX("n %d, frame 0x%02X, le_adv_inf->length %d", n, le_adv_inf->data[n], le_adv_inf->length);
-  printf("MAC %s, RSSI %d\n", pSettings->BDAddress, (int8_t)le_adv_inf->data[le_adv_inf->length]);
+  printf("%02d:%02d:%02d -> MAC %s, RSSI %d\n", actual->tm_hour, actual->tm_min, actual->tm_sec, pSettings->BDAddress, (int8_t)le_adv_inf->data[le_adv_inf->length]);
   while ( idx<le_adv_inf->length ) {
     len=le_adv_inf->data[idx++];
     n=0;
@@ -288,7 +295,7 @@ SC_PARSEBUFFER scanner_frame_parser() {
           ble_data.luminosity=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
           printf("lumin. %d lux\n", ble_data.luminosity);
           ble_data.battery=le_adv_inf->data[idx]; idx++;
-          printf("batt. %.01f\n", (float)(ble_data.battery)/10);
+          printf("batt. %.01f", (float)(ble_data.battery)/10);
 
           idx++;
           n=len;
@@ -304,6 +311,6 @@ SC_PARSEBUFFER scanner_frame_parser() {
       }
     printf("\n");
     }
-
+  printf("\n");
 	return nRet;
 }

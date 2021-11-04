@@ -180,7 +180,6 @@ int main(int argc, char *argv[]) {
 	int len;
 
   int count = 0;
-	// last_detection_time - now < 10
 	while ( lu0cfg.Running ) {
 		len = read(device, buf, sizeof(buf));
 

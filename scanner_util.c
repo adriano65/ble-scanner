@@ -71,8 +71,8 @@ void savebuf2TxtFile(unsigned char *buf, int buflen) {
 
 void savebuf2BinFile(unsigned char *buf, int buflen) {
 	char filename[1024];
-	time_t timenow ;
-	struct tm * actual ;
+	time_t timenow;
+	struct tm * actual;
   FILE * fpbinlog;
 
 	time(&timenow) ;       // time since 1970
