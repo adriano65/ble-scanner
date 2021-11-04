@@ -116,7 +116,6 @@ int main(int argc, char *argv[]) {
 		}
 
 	// Set BLE scan parameters.
-
 	le_set_scan_parameters_cp scan_params_cp;
 	memset(&scan_params_cp, 0, sizeof(scan_params_cp));
 	scan_params_cp.type 			= 0x00;
@@ -135,7 +134,6 @@ int main(int argc, char *argv[]) {
 		}
 
 	// Set BLE events report mask.
-
 	le_set_event_mask_cp event_mask_cp;
 	memset(&event_mask_cp, 0, sizeof(le_set_event_mask_cp));
 	int i = 0;
@@ -150,7 +148,6 @@ int main(int argc, char *argv[]) {
 		}
 
 	// Enable scanning.
-
 	le_set_scan_enable_cp scan_cp;
 	memset(&scan_cp, 0, sizeof(scan_cp));
 	scan_cp.enable 		= 0x01;	// Enable flag.
@@ -166,7 +163,6 @@ int main(int argc, char *argv[]) {
 		}
 
 	// Get Results.
-
 	struct hci_filter nf;
 	hci_filter_clear(&nf);
 	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
@@ -187,22 +183,26 @@ int main(int argc, char *argv[]) {
 	// last_detection_time - now < 10
 	while ( lu0cfg.Running ) {
 		len = read(device, buf, sizeof(buf));
+
 		if ( len >= HCI_EVENT_HDR_SIZE ) {
+      DBG_MAX("count %d, len %d\n", count, len);
       count++;
 			meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
+
 			if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
 				uint8_t reports_count = meta_event->data[0];
         DBG_MAX("reports_count %d", reports_count);
 				void * offset = meta_event->data + 1;
 				while ( reports_count-- ) {
 					le_adv_info = (le_advertising_info *)offset;
-          if ( ble_fill_rxbuf(le_adv_info) ) { ; }
+          ble_fill_rxbuf(le_adv_info);
 					offset = le_adv_info->data + le_adv_info->length + 2;
 					}
 				}
       else { DBG_MIN("meta_event->subevent %d\n", meta_event->subevent); }
+
 			}
-    SLEEPMS(300);
+    SLEEPMS(50);
 		}
 
 	DBG_MIN("Disable scanning.");
