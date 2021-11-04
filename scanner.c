@@ -198,9 +198,11 @@ int main(int argc, char *argv[]) {
 					offset = le_adv_info->data + le_adv_info->length + 2;
 					}
 				}
-      else { DBG_MIN("meta_event->subevent %d\n", meta_event->subevent); }
-
+      else { 
+        DBG_MIN("meta_event->subevent %d\n", meta_event->subevent);
+        }
 			}
+    
     SLEEPMS(50);
 		}
 
