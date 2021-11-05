@@ -133,6 +133,7 @@ void scanner_parser_sendbuffer(void * param, void * buf, int len);
 void get_ble_data(void * settings);
 void set_ble_data(void * param);
 void set_ble_sm(SC_STATEM newstate);
+int ble_show_rxbuf(le_advertising_info * le_adv_info);
 int ble_fill_rxbuf(le_advertising_info * le_adv_info);
 int rxbuf2frames();
 SC_PARSEBUFFER scanner_frame_parser();

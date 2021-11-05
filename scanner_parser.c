@@ -225,6 +225,20 @@ void set_ble_sm(SC_STATEM newstate) {
   pthread_mutex_unlock(&mutex);
 }
 
+int ble_show_rxbuf(le_advertising_info * le_adv_info) {
+  _Settings *pSettings = (_Settings *)lu0cfg.Settings;
+  bdaddr_t tmpbdadd;
+  char addr[18];
+  ba2str(&(le_adv_info->bdaddr), addr);
+  printf("MAC %s, RSSI %d, data", addr, (int8_t)le_adv_info->data[le_adv_info->length]);
+  for (int n = 0; n < le_adv_info->length; n++) {
+    printf(" %02X", (unsigned char)le_adv_info->data[n]);
+    }
+  printf("\n");
+  SLEEPMS(200);
+  return TRUE;
+}
+
 int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
   bdaddr_t tmpbdadd;
@@ -251,7 +265,6 @@ int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
     }
   return FALSE;
 }
-
 
 SC_PARSEBUFFER scanner_frame_parser() {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
@@ -303,6 +316,23 @@ SC_PARSEBUFFER scanner_frame_parser() {
                 #if 0
                 for (int n = idx; n < idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
                 idx+=sublen-5;
+                #else
+                ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                i+=2; // tbd
+                ble_data.humidity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                ble_data.battery=le_adv_inf->data[i+idx];
+                printf("%02X%02X%02X, temp %.01f, humid. %.01f, batt. %.01f", ble_data.sensorDataID[0], \
+                                                                               ble_data.sensorDataID[1], \
+                                                                               ble_data.sensorDataID[2], \
+                                                                               (float)ble_data.temperature/10, \
+                                                                               (float)ble_data.humidity/10, \
+                                                                               (float)(ble_data.battery)/10);
+                #endif
+                break;
+
+              default:
+                #if 1
+                for (int n = i+idx; n < i+idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
                 #else
                 ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
                 i+=2; // tbd

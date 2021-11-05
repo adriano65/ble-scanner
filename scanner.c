@@ -68,8 +68,9 @@ int main(int argc, char *argv[]) {
   lu0cfg.daemonize = TRUE;
   settings=(_Settings *)malloc(sizeof(_Settings));
   lu0cfg.Settings = settings;
+  settings->map.bit_vars.bScan=FALSE;
 
-  while ((opt = getopt(argc, argv, "?dhn")) != -1) {		//: semicolon means that option need an arg!
+  while ((opt = getopt(argc, argv, "?dhns")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 'd' :
         test_mode=TRUE;
@@ -80,6 +81,9 @@ int main(int argc, char *argv[]) {
         break ;
       case 'n' :
         lu0cfg.daemonize = FALSE;
+        break ;
+      case 's' :
+        settings->map.bit_vars.bScan=TRUE;
         break ;
       default:
         usage(argv);
@@ -194,7 +198,10 @@ int main(int argc, char *argv[]) {
 				void * offset = meta_event->data + 1;
 				while ( reports_count-- ) {
 					le_adv_info = (le_advertising_info *)offset;
-          ble_fill_rxbuf(le_adv_info);
+
+          if (settings->map.bit_vars.bScan) { ble_show_rxbuf(le_adv_info); }
+          else { ble_fill_rxbuf(le_adv_info); }
+
 					offset = le_adv_info->data + le_adv_info->length + 2;
 					}
 				}
