@@ -5,7 +5,7 @@
 #include "stdbool.h"
 
 #define SOFTREL 0x00	  // Software release
-#define SUBSREL 0x01    // Software subrelease
+#define SUBSREL 0x02    // Software subrelease
 
 typedef enum _SERIAL_PROTO {
 	SERPROT_RK03Y = 0,

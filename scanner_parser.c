@@ -256,12 +256,10 @@ int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
 SC_PARSEBUFFER scanner_frame_parser() {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
   SC_PARSEBUFFER nRet=SC_PARSEBUFFER_NO_ANSW;
-  unsigned char n, idx=0, len=0, frame=0;
+  unsigned char idx=0, i, sublen=0, frameCnt=0;
 
   #if 1
-  for (int n = 0; n < le_adv_inf->length; n++) {
-    printf(" %02X", (unsigned char)le_adv_inf->data[n]);
-    }
+  printf("len %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
   printf("\n\n");
   #endif
 	time_t timenow;
@@ -273,27 +271,27 @@ SC_PARSEBUFFER scanner_frame_parser() {
   DBG_MAX("n %d, frame 0x%02X, le_adv_inf->length %d", n, le_adv_inf->data[n], le_adv_inf->length);
   printf("%02d:%02d:%02d -> MAC %s, RSSI %d\n", actual->tm_hour, actual->tm_min, actual->tm_sec, pSettings->BDAddress[0], (int8_t)le_adv_inf->data[le_adv_inf->length]);
   while ( idx<le_adv_inf->length ) {
-    len=le_adv_inf->data[idx++];
-    n=0;
-    frame++;
-    printf("len %d -> ID ", len);
-    while ((n++)<len) {
-      switch (frame) {
+    sublen=le_adv_inf->data[idx++];
+    i=0;
+    frameCnt++;
+    printf("sublen %d -> ", sublen);
+    while (i<sublen) {
+      switch (frameCnt) {
         case 1:
-          printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
+          printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
           break;
         
         case 2:
-          //printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
-          if (le_adv_inf->data[idx++]==0xFF) {
-            ble_data.sensorDataID[0]=le_adv_inf->data[idx++];
-            ble_data.sensorDataID[1]=le_adv_inf->data[idx++];
-            ble_data.sensorDataID[2]=le_adv_inf->data[idx++];
-            ble_data.temperature=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
+          if (le_adv_inf->data[i+idx]==0xFF) {
+            i++;
+            ble_data.sensorDataID[0]=le_adv_inf->data[i+idx]; i++;
+            ble_data.sensorDataID[1]=le_adv_inf->data[i+idx]; i++;
+            ble_data.sensorDataID[2]=le_adv_inf->data[i+idx]; i++;
             switch (ble_data.sensorDataID[2]) {
               case 0x03:         // 0x160F03
-                ble_data.luminosity=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
-                ble_data.battery=le_adv_inf->data[idx]; idx++;
+                ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                ble_data.luminosity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                ble_data.battery=le_adv_inf->data[i+idx];
                 printf("%02X%02X%02X, temp %.01f, lumin. %d lux, batt. %.01f", ble_data.sensorDataID[0], \
                                                                                ble_data.sensorDataID[1], \
                                                                                ble_data.sensorDataID[2], \
@@ -302,36 +300,41 @@ SC_PARSEBUFFER scanner_frame_parser() {
                                                                                (float)(ble_data.battery)/10);
                 break;
               case 0x05:                
-                idx+=2;   //lumin not reported
-                #if 1
-                for (int n = idx; n < len; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
+                #if 0
+                for (int n = idx; n < idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
+                idx+=sublen-5;
                 #else
-                ble_data.humidity=le_adv_inf->data[idx]+(le_adv_inf->data[idx+1]<<8); idx+=2;
-                printf("humidity %d %%\n", ble_data.humidity);
-                ble_data.battery=le_adv_inf->data[idx]; idx++;
-                printf("batt. %.01f", (float)(ble_data.battery)/10);
+                ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                i+=2; // tbd
+                ble_data.humidity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+                ble_data.battery=le_adv_inf->data[i+idx];
+                printf("%02X%02X%02X, temp %.01f, humid. %.01f, batt. %.01f", ble_data.sensorDataID[0], \
+                                                                               ble_data.sensorDataID[1], \
+                                                                               ble_data.sensorDataID[2], \
+                                                                               (float)ble_data.temperature/10, \
+                                                                               (float)ble_data.humidity/10, \
+                                                                               (float)(ble_data.battery)/10);
                 #endif
                 break;
               }
-
-            //idx++;
-            idx=len+1;
-            n=len;
+            i=sublen;
             }
           else {
             //printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
-            printf("%c", (unsigned char)le_adv_inf->data[idx++]);
+            printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
             }
           break;
 
         case 3:
-          printf("%c", (unsigned char)le_adv_inf->data[idx++]);
+          printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
           break;
 
         default:
           break;
         }
+      i++;
       }
+    idx+=sublen;
     printf("\n");
     }
   printf("\n");
