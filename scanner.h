@@ -18,7 +18,8 @@ struct _serprot_bits {
         uint8_t bRunning  : 1;
         uint8_t bScan  : 1;
         SERIAL_PROTO protocol  : 3;
-        uint8_t spare  : 3;
+        uint8_t bTestMode  : 1;
+        uint8_t spare  : 2;
 };
 
 union _serprot_map {

@@ -226,8 +226,7 @@ void set_ble_sm(SC_STATEM newstate) {
 }
 
 int ble_show_rxbuf(le_advertising_info * le_adv_info) {
-  _Settings *pSettings = (_Settings *)lu0cfg.Settings;
-  bdaddr_t tmpbdadd;
+  //_Settings *pSettings = (_Settings *)lu0cfg.Settings;
   char addr[18];
   ba2str(&(le_adv_info->bdaddr), addr);
   printf("MAC %s, RSSI %d, data", addr, (int8_t)le_adv_info->data[le_adv_info->length]);
@@ -271,10 +270,10 @@ SC_PARSEBUFFER scanner_frame_parser() {
   SC_PARSEBUFFER nRet=SC_PARSEBUFFER_NO_ANSW;
   unsigned char idx=0, i, sublen=0, frameCnt=0;
 
-  #if 1
-  printf("len %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
-  printf("\n\n");
-  #endif
+  if (pSettings->map.bit_vars.bTestMode) {
+    printf("len %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
+    printf("\n\n");
+    }
 	time_t timenow;
 	struct tm * actual;
 

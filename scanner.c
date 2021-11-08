@@ -31,7 +31,6 @@
   #define DBG_MAX(fmt...) do { } while(0)
 #endif
 
-static volatile int test_mode=FALSE;
 char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 } ;
 _LUCONFIG lu0cfg;
 static _Settings *settings;
@@ -69,11 +68,12 @@ int main(int argc, char *argv[]) {
   settings=(_Settings *)malloc(sizeof(_Settings));
   lu0cfg.Settings = settings;
   settings->map.bit_vars.bScan=FALSE;
+  settings->map.bit_vars.bTestMode=FALSE;
 
   while ((opt = getopt(argc, argv, "?dhns")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 'd' :
-        test_mode=TRUE;
+        settings->map.bit_vars.bTestMode=FALSE;
         lu0cfg.daemonize = FALSE;
         break ;
       case 'h' :
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
 	uint8_t buf[HCI_MAX_EVENT_SIZE];
 	evt_le_meta_event * meta_event;
 	le_advertising_info * le_adv_info;
-  extended_inquiry_info * ext_inq_info;
+  //extended_inquiry_info * ext_inq_info;
 	int len;
 
   int count = 0;
