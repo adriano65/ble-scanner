@@ -250,8 +250,9 @@ void usage(char * argv[]) {
   printf("\t%s [par]\n", argv[0]) ;
   printf("Where [par]:\n") ;
   printf("\t-?\t\tThis help\n") ;
-  printf("\t-n\t\tDon't run as daemon\n") ;
   printf("\t-d\t\tTest mode\n") ;
+  printf("\t-n\t\tDon't run as daemon\n") ;
+  printf("\t-s\t\tScan mode\n") ;
   exit(0) ;
 }
 
