@@ -1,0 +1,5 @@
+./.gitignore
+objs/*
+*.log
+./serialproto
+*.conf

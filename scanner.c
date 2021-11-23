@@ -1,14 +1,14 @@
-// Copyright (c) 2021 David G. Young
-// Copyright (c) 2015 Damian Kołakowski. All rights reserved.
-
+#include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include <signal.h>
 #include <errno.h>
 #include <unistd.h>
-#include <stddef.h>
 #include <string.h>
 #include <pth.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -57,14 +57,17 @@ struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void *
 }
 
 int main(int argc, char *argv[]) {
-	int ret, status;
-	int opt;
+	uint8_t buf[HCI_MAX_EVENT_SIZE];
+	int ret, status, opt, i, nbyte, retval, hci_dev;
+  fd_set rdset;
+  struct timeval tv;
+  struct hci_request hci_rq;
 
   lu0cfg.nLU=0;
   strncpy(lu0cfg.name, argv[0], STDLEN);
   gethostname(lu0cfg.HWCode, STDLEN);
   lu0cfg.cmds=Lu0cmds;
-  lu0cfg.daemonize = TRUE;
+  lu0cfg.daemonize = FALSE;
   settings=(_Settings *)malloc(sizeof(_Settings));
   lu0cfg.Settings = settings;
   settings->map.bit_vars.bScan=FALSE;
@@ -73,14 +76,13 @@ int main(int argc, char *argv[]) {
   while ((opt = getopt(argc, argv, "?dhns")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 'd' :
-        settings->map.bit_vars.bTestMode=FALSE;
-        lu0cfg.daemonize = FALSE;
+        settings->map.bit_vars.bTestMode=TRUE;
         break ;
       case 'h' :
         usage(argv);
         break ;
       case 'n' :
-        lu0cfg.daemonize = FALSE;
+        lu0cfg.daemonize = TRUE;
         break ;
       case 's' :
         settings->map.bit_vars.bScan=TRUE;
@@ -92,10 +94,7 @@ int main(int argc, char *argv[]) {
     }
 
   printf("\n%s\nLoad configuration...\n%s\n", banner, lu0cfg.daemonize ? "Log to file" : "Log to stdout");
-  if (LoadConfig(&lu0cfg)) {
-    DBG_MIN("Bad or missing configuration file");
-    return FALSE;
-    }
+  if (LoadConfig(&lu0cfg)) { DBG_MIN("Bad or missing configuration file"); return FALSE; }
   // Check daemonization
   if (lu0cfg.daemonize) {
     printf("Running as daemon...\n");
@@ -113,8 +112,7 @@ int main(int argc, char *argv[]) {
 
 
 	// Get HCI device.
-	int device = hci_open_dev(settings->HCIDevNumber);
-	if ( device < 0 ) {
+	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) {
 		perror("Failed to open HCI device.");
 		return 0;
 		}
@@ -128,11 +126,10 @@ int main(int argc, char *argv[]) {
 	scan_params_cp.own_bdaddr_type 	= 0x00; // Public Device Address (default).
 	scan_params_cp.filter 			= 0x00; // Accept all.
 
-	struct hci_request scan_params_rq = ble_hci_request(OCF_LE_SET_SCAN_PARAMETERS, LE_SET_SCAN_PARAMETERS_CP_SIZE, &status, &scan_params_cp);
+	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_PARAMETERS, LE_SET_SCAN_PARAMETERS_CP_SIZE, &status, &scan_params_cp);
 
-	ret = hci_send_req(device, &scan_params_rq, 1000);
-	if ( ret < 0 ) {
-		hci_close_dev(device);
+	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
+		hci_close_dev(hci_dev);
 		perror("Failed to set scan parameters data.");
 		return 0;
 		}
@@ -140,28 +137,24 @@ int main(int argc, char *argv[]) {
 	// Set BLE events report mask.
 	le_set_event_mask_cp event_mask_cp;
 	memset(&event_mask_cp, 0, sizeof(le_set_event_mask_cp));
-	int i = 0;
 	for ( i = 0 ; i < 8 ; i++ ) event_mask_cp.mask[i] = 0xFF;
 
-	struct hci_request set_mask_rq = ble_hci_request(OCF_LE_SET_EVENT_MASK, LE_SET_EVENT_MASK_CP_SIZE, &status, &event_mask_cp);
-	ret = hci_send_req(device, &set_mask_rq, 1000);
-	if ( ret < 0 ) {
-		hci_close_dev(device);
+	hci_rq = ble_hci_request(OCF_LE_SET_EVENT_MASK, LE_SET_EVENT_MASK_CP_SIZE, &status, &event_mask_cp);
+	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
+		hci_close_dev(hci_dev);
 		perror("Failed to set event mask.");
 		return 0;
 		}
 
 	// Enable scanning.
-	le_set_scan_enable_cp scan_cp;
-	memset(&scan_cp, 0, sizeof(scan_cp));
-	scan_cp.enable 		= 0x01;	// Enable flag.
-	scan_cp.filter_dup 	= 0x00; // Filtering disabled.
+	le_set_scan_enable_cp le_scan_en_cp;
+	memset(&le_scan_en_cp, 0, sizeof(le_set_scan_enable_cp));
+	le_scan_en_cp.enable 		= 0x01;	// Enable flag.
+	le_scan_en_cp.filter_dup 	= 0x00; // Filtering disabled.
+	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &le_scan_en_cp);
 
-	struct hci_request enable_adv_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &scan_cp);
-
-	ret = hci_send_req(device, &enable_adv_rq, 1000);
-	if ( ret < 0 ) {
-		hci_close_dev(device);
+	if ( (ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
+		hci_close_dev(hci_dev);
 		perror("Failed to enable scan.");
 		return 0;
 		}
@@ -171,78 +164,100 @@ int main(int argc, char *argv[]) {
 	hci_filter_clear(&nf);
 	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
 	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
-	if ( setsockopt(device, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0 ) {
-		hci_close_dev(device);
+	if ( setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0 ) {
+		hci_close_dev(hci_dev);
 		perror("Could not set socket options\n");
 		return 0;
 		}
 
-	uint8_t buf[HCI_MAX_EVENT_SIZE];
-	evt_le_meta_event * meta_event;
-	le_advertising_info * le_adv_info;
-  //extended_inquiry_info * ext_inq_info;
-	int len;
-
-  int count = 0;
 	while ( lu0cfg.Running ) {
-		len = read(device, buf, sizeof(buf));
+    FD_ZERO(&rdset);
+    FD_SET(0, &rdset);
+    FD_SET(hci_dev, &rdset);
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
 
-		if ( len >= HCI_EVENT_HDR_SIZE ) {
-      DBG_MAX("count %d, len %d\n", count, len);
-      count++;
-			meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
+    retval = select(FD_SETSIZE, &rdset, NULL, NULL, &tv);
+    if (!retval) {          	// select exited due to timeout
+      SerialTMOManager();
+      }
+    else if (FD_ISSET(hci_dev, &rdset)) {
+	    DBG_MAX("ble activity");
+		  if ((nbyte = read(hci_dev, buf, sizeof(buf)))>0) {
+	      AdvAnalyze(buf, nbyte);
+	      }
+	    }
 
-			if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
-				uint8_t reports_count = meta_event->data[0];
-        DBG_MAX("reports_count %d", reports_count);
-				void * offset = meta_event->data + 1;
-				while ( reports_count-- ) {
-					le_adv_info = (le_advertising_info *)offset;
-
-          if (settings->map.bit_vars.bScan) { ble_show_rxbuf(le_adv_info); }
-          else { ble_fill_rxbuf(le_adv_info); }
-
-					offset = le_adv_info->data + le_adv_info->length + 2;
-					}
-				}
-      else { 
-        DBG_MIN("meta_event->subevent %d\n", meta_event->subevent);
-        }
-			}
-    
-    SLEEPMS(50);
 		}
 
-	DBG_MIN("Disable scanning.");
-	memset(&scan_cp, 0, sizeof(scan_cp));
-	scan_cp.enable = 0x00;	// Disable flag.
+  /*
+  if (current_hci_state.state == HCI_STATE_FILTERING)	{
+    current_hci_state.state = HCI_STATE_SCANNING;
+    setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &current_hci_state.original_filter, sizeof(current_hci_state.original_filter));
+    }
+  */
 
-	struct hci_request disable_adv_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &scan_cp);
-	ret = hci_send_req(device, &disable_adv_rq, 1000);
-	if ( ret < 0 ) {
-		hci_close_dev(device);
-		perror("Failed to disable scan.");
+	memset(&le_scan_en_cp, 0, sizeof(le_set_scan_enable_cp));
+	le_scan_en_cp.enable = 0x00;	// Disable flag.
+	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &le_scan_en_cp);
+	if ((ret = hci_send_req(hci_dev, &hci_rq, 2500)) < 0 ) {
+		hci_close_dev(hci_dev);
+		DBG_MIN("Failed to disable scan: %s", strerror(errno));   //Connection timed out
 		return 0;
-	}
+	  }
 
-	hci_close_dev(device);
+	DBG_MIN("Scanning disabled.");
+	hci_close_dev(hci_dev);
 
 	return 0;
 }
 
+void AdvAnalyze(uint8_t * buf, int nbyte) {
+	le_advertising_info * le_adv_info;
+	evt_le_meta_event * meta_event;
+  //extended_inquiry_info * ext_inq_info;
+  int count = 0;
+
+  if ( nbyte >= HCI_EVENT_HDR_SIZE ) {
+    DBG_MAX("count %d, nbyte %d\n", count, nbyte);
+    count++;
+    meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
+
+    if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
+      uint8_t reports_count = meta_event->data[0];
+      DBG_MAX("reports_count %d", reports_count);
+      void * offset = meta_event->data + 1;
+      while ( reports_count-- ) {
+        le_adv_info = (le_advertising_info *)offset;
+
+        if (settings->map.bit_vars.bScan) { ble_show_rxbuf(le_adv_info); }
+        else { ble_fill_rxbuf(le_adv_info); }
+
+        offset = le_adv_info->data + le_adv_info->length + 2;
+        }
+      }
+    else { 
+      DBG_MIN("meta_event->subevent %d", meta_event->subevent);
+      }
+    }
+  else { 
+    DBG_MIN("nbyte %d", nbyte);
+    }
+    
+}
+
 void HandleSig(int signo) {
-  if (signo==SIGINT || signo==SIGTERM) {
-    End();
-    }
-  else {
-    DBG_MIN("unexpected signal: %d exiting anyway", signo);
-    exit(0);
-    }
+  if (signo==SIGINT || signo==SIGTERM) { End();  }
+  else { DBG_MIN("unexpected signal: %d exiting anyway", signo); exit(0); }
 }
 
 void End(void) {
   lu0cfg.Running = FALSE;
-  SLEEPMS(800);
+  SLEEPMS(500);
+}
+
+void SerialTMOManager() {
+  DBG_MIN(".");
 }
 
 void usage(char * argv[]) {
@@ -251,11 +266,10 @@ void usage(char * argv[]) {
   printf("Where [par]:\n") ;
   printf("\t-?\t\tThis help\n") ;
   printf("\t-d\t\tTest mode\n") ;
-  printf("\t-n\t\tDon't run as daemon\n") ;
+  printf("\t-n\t\tRun as daemon\n") ;
   printf("\t-s\t\tScan mode\n") ;
   exit(0) ;
 }
-
 
 // *********************************************************************
 CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]) {

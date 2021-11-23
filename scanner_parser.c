@@ -269,13 +269,13 @@ SC_PARSEBUFFER scanner_frame_parser() {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
   SC_PARSEBUFFER nRet=SC_PARSEBUFFER_NO_ANSW;
   unsigned char idx=0, i, sublen=0, frameCnt=0;
+	time_t timenow;
+	struct tm * actual;
 
   if (pSettings->map.bit_vars.bTestMode) {
     printf("len %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
     printf("\n\n");
     }
-	time_t timenow;
-	struct tm * actual;
 
 	time(&timenow) ;       // time since 1970
 	actual = localtime(&timenow);
@@ -286,7 +286,8 @@ SC_PARSEBUFFER scanner_frame_parser() {
     sublen=le_adv_inf->data[idx++];
     i=0;
     frameCnt++;
-    printf("sublen %d -> ", sublen);
+    //printf("frame %d, len %d, data 0x%02X-> ", frameCnt, sublen, (unsigned char)le_adv_inf->data[idx-1]);
+    printf("frame %d, len %d -> ", frameCnt, sublen);
     while (i<sublen) {
       switch (frameCnt) {
         case 1:
@@ -349,16 +350,18 @@ SC_PARSEBUFFER scanner_frame_parser() {
             i=sublen;
             }
           else {
-            //printf(" %02X", (unsigned char)le_adv_inf->data[idx++]);
-            printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
+            printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
+            //printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
             }
           break;
 
         case 3:
-          printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
+          printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
+          //printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
           break;
 
         default:
+          printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
           break;
         }
       i++;
