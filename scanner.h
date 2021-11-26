@@ -12,13 +12,15 @@ typedef enum _SERIAL_PROTO {
 	SERPROT_WAYO3 = 1,
 	SERPROT_DSM = 2,
 	SERPROT_DSM_TEST = 3,
+	SERPROT_ESCORT = 4,
+	SERPROT_TELTONIKA = 5,
 } SERIAL_PROTO;
 
 struct _serprot_bits {
         uint8_t bRunning  : 1;
         uint8_t bScan  : 1;
-        SERIAL_PROTO protocol  : 3;
         uint8_t bTestMode  : 1;
+        SERIAL_PROTO protocol  : 3;
         uint8_t spare  : 2;
 };
 

@@ -1,5 +1,7 @@
 ./.gitignore
 objs/*
 *.log
-./serialproto
-*.conf
+./scanner
+./scanner.conf
+./example
+

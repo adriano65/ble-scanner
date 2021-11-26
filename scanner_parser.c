@@ -301,6 +301,7 @@ SC_PARSEBUFFER scanner_frame_parser() {
             ble_data.sensorDataID[2]=le_adv_inf->data[i+idx]; i++;
             switch (ble_data.sensorDataID[2]) {
               case 0x03:         // 0x160F03
+                pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
                 ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
                 ble_data.luminosity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
                 ble_data.battery=le_adv_inf->data[i+idx];
@@ -312,6 +313,7 @@ SC_PARSEBUFFER scanner_frame_parser() {
                                                                                (float)(ble_data.battery)/10);
                 break;
               case 0x05:                
+                pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
                 #if 0
                 for (int n = idx; n < idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
                 idx+=sublen-5;
@@ -355,8 +357,12 @@ SC_PARSEBUFFER scanner_frame_parser() {
           break;
 
         case 3:
-          printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
-          //printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
+          if (pSettings->map.bit_vars.protocol==SERPROT_ESCORT) {
+            printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
+            }
+          else {
+            printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
+            }
           break;
 
         default:

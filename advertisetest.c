@@ -37,6 +37,7 @@ unsigned int twoc(int in, int t) {  return (in < 0) ? (in + (2 << (t-1))) : in;}
 
 
 int main(int argc, char **argv){
+  int ret;
   bdaddr_t bdaddr;
 
   if(argc != 5) {
@@ -54,11 +55,11 @@ int main(int argc, char **argv){
   le_set_advertising_parameters_cp adv_params_cp;
   memset(&adv_params_cp, 0, sizeof(adv_params_cp));
   /* advertisement time in ms */
-  adv_params_cp.min_interval = htobs(10000);
-  adv_params_cp.max_interval = htobs(12000);
-  //if (opt)
-  //  adv_params_cp.advtype = atoi(opt);
-  adv_params_cp.chan_map = 7;
+  uint16_t interval = htobs(30000); // 30000 * 0.625ms = 18650ms
+  adv_params_cp.min_interval = interval;
+  adv_params_cp.max_interval = interval;
+  adv_params_cp.advtype = 0x03; // non-connectable undirected advertising
+  adv_params_cp.chan_map = 7;   // all 3 channels
 
   uint8_t status;
   struct hci_request rq;
@@ -69,9 +70,7 @@ int main(int argc, char **argv){
   rq.clen = LE_SET_ADVERTISING_PARAMETERS_CP_SIZE;
   rq.rparam = &status;
   rq.rlen = 1;
-
-  int ret = hci_send_req(device_handle, &rq, 1000);
-  if (ret < 0) goto done;
+  if ((ret = hci_send_req(device_handle, &rq, 1000))< 0) goto done;
 
   le_set_advertising_data_cp adv_data_cp;
   bzero(&adv_data_cp, sizeof(adv_data_cp));
@@ -139,25 +138,20 @@ int main(int argc, char **argv){
   adv_data_cp.length += segment_length;
 
 
-
-
-  memset(&rq, 0, sizeof(rq));
+  bzero(&rq, sizeof(rq));
   rq.ogf = OGF_LE_CTL;
   rq.ocf = OCF_LE_SET_ADVERTISING_DATA;
   rq.cparam = &adv_data_cp;
   rq.clen = LE_SET_ADVERTISING_DATA_CP_SIZE;
   rq.rparam = &status;
   rq.rlen = 1;
-
-  ret = hci_send_req(device_handle, &rq, 1000);
-  if (ret < 0)
-    goto done;
+  if ((ret = hci_send_req(device_handle, &rq, 1000)) < 0) goto done;
 
   le_set_advertise_enable_cp advertise_cp;
-  memset(&advertise_cp, 0, sizeof(advertise_cp));
+  bzero(&advertise_cp, sizeof(advertise_cp));
   advertise_cp.enable = 0x01;
 
-  memset(&rq, 0, sizeof(rq));
+  bzero(&rq, sizeof(rq));
   rq.ogf = OGF_LE_CTL;
   rq.ocf = OCF_LE_SET_ADVERTISE_ENABLE;
   rq.cparam = &advertise_cp;
@@ -165,7 +159,7 @@ int main(int argc, char **argv){
   rq.rparam = &status;
   rq.rlen = 1;
 
-  ret = hci_send_req(device_handle, &rq, 1000);
+  if ((ret = hci_send_req(device_handle, &rq, 1000)) < 0) goto done;
 
   #if 0
   /* ---------------------------- request TX power on connected device ?*/

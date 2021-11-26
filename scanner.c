@@ -73,9 +73,9 @@ int main(int argc, char *argv[]) {
   settings->map.bit_vars.bScan=FALSE;
   settings->map.bit_vars.bTestMode=FALSE;
 
-  while ((opt = getopt(argc, argv, "?dhns")) != -1) {		//: semicolon means that option need an arg!
+  while ((opt = getopt(argc, argv, "?thns")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
-      case 'd' :
+      case 't' :
         settings->map.bit_vars.bTestMode=TRUE;
         break ;
       case 'h' :
@@ -114,14 +114,15 @@ int main(int argc, char *argv[]) {
 	// Get HCI device.
 	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) { DBG_MIN("Failed to open HCI device."); return 0; }
 
+  #if 1
 	// Set BLE scan parameters.
 	le_set_scan_parameters_cp scan_params_cp;
 	memset(&scan_params_cp, 0, sizeof(scan_params_cp));
-	scan_params_cp.type 			= 0x00;
-	scan_params_cp.interval 		= htobs(0x0010);
-	scan_params_cp.window 			= htobs(0x0010);
+	scan_params_cp.type 			= 0x00; //Passive scanning
+	scan_params_cp.interval 		= htobs(8000);    // How frequently should scan (windows<interval)
+	scan_params_cp.window 			= htobs(500);    // How much time execute the scan (Time * 0.625 ms)
 	scan_params_cp.own_bdaddr_type 	= 0x00; // Public Device Address (default).
-	scan_params_cp.filter 			= 0x00; // Accept all.
+	scan_params_cp.filter 			= 0x02; // Accept all.
 
 	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_PARAMETERS, LE_SET_SCAN_PARAMETERS_CP_SIZE, &status, &scan_params_cp);
 
@@ -142,6 +143,7 @@ int main(int argc, char *argv[]) {
 		DBG_MIN("Failed to set event mask.");
 		return 0;
 		}
+  #endif
 
 	// Enable scanning.
 	le_set_scan_enable_cp le_scan_en_cp;
@@ -317,7 +319,7 @@ void usage(char * argv[]) {
   printf("\t%s [par]\n", argv[0]) ;
   printf("Where [par]:\n") ;
   printf("\t-?\t\tThis help\n") ;
-  printf("\t-d\t\tTest mode\n") ;
+  printf("\t-t\t\tTest mode\n") ;
   printf("\t-n\t\tRun as daemon\n") ;
   printf("\t-s\t\tScan mode\n") ;
   exit(0) ;
