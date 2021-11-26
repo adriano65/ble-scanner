@@ -47,6 +47,7 @@ void HandleSig(int signo);
 void End(void);
 void SerialTMOManager();
 void AdvAnalyze(uint8_t * buf, int nbyte);
+void AdvAnalyze_new(uint8_t * buf, int nbyte);
 
 CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]);
 CMDPARSING_RES doSerialProtocol(_LUCONFIG * lucfg, int argc, char *argv[]);

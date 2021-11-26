@@ -226,7 +226,6 @@ void set_ble_sm(SC_STATEM newstate) {
 }
 
 int ble_show_rxbuf(le_advertising_info * le_adv_info) {
-  //_Settings *pSettings = (_Settings *)lu0cfg.Settings;
   char addr[18];
   ba2str(&(le_adv_info->bdaddr), addr);
   printf("MAC %s, RSSI %d, data", addr, (int8_t)le_adv_info->data[le_adv_info->length]);
@@ -258,7 +257,7 @@ int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
     memcpy(le_adv_inf, le_adv_info, sizeof(le_advertising_info));
     memcpy(&le_adv_inf->data, le_adv_info->data, le_adv_info->length+1);
     map.bit_vars.bEnableFrameParsing=TRUE;    // NOT OVERLAP over other state machine states
-    DBG_MAX("le_adv_inf.data[0] 0x%02X, le_adv_inf.length %d", le_adv_inf->data[0], le_adv_inf->length);
+    DBG_MAX("Event %d, lenght %d", le_adv_inf->evt_type, le_adv_inf->length);
     #endif
     return TRUE;
     }
@@ -371,4 +370,42 @@ SC_PARSEBUFFER scanner_frame_parser() {
     }
   printf("\n");
 	return nRet;
+}
+
+
+void process_data(uint8_t *data, size_t data_len, le_advertising_info *info) {
+  printf("Test: %p and %ld\n", data, data_len);
+  if(data[0] == EIR_NAME_SHORT || data[0] == EIR_NAME_COMPLETE) {
+    size_t name_len = data_len - 1;
+    char *name = malloc(name_len + 1);
+    bzero(name, name_len + 1);
+    memcpy(name, &data[2], name_len);
+
+    char addr[18];
+    ba2str(&info->bdaddr, addr);
+
+    printf("addr=%s name=%s\n", addr, name);
+
+    free(name);
+    }
+  else if(data[0] == EIR_FLAGS) {
+        printf("Flag type: len=%ld\n", data_len);
+        int i;
+        for(i=1; i<data_len; i++) {
+          printf("\tFlag data: 0x%0X\n", data[i]);
+          }
+        }
+      else if(data[0] == EIR_MANUFACTURE_SPECIFIC) {
+            printf("Manufacture specific type: len=%ld\n", data_len);
+
+            // TODO int company_id = data[current_index + 2] 
+
+            int i;
+            printf("Data:");
+            for(i=1; i<data_len; i++) { printf(" 0x%0X", data[i]); }
+            printf("\n");
+            }
+          else {
+            printf("Unknown type: type=%X\n", data[0]);
+            }
 }

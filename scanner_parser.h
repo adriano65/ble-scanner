@@ -4,6 +4,11 @@
 #include "stdint.h"
 #include "stdbool.h"
 
+#define EIR_FLAGS                   0X01
+#define EIR_NAME_SHORT              0x08
+#define EIR_NAME_COMPLETE           0x09
+#define EIR_MANUFACTURE_SPECIFIC    0xFF
+
 #define SC_MAXDATALENGTH        255
 #define DEFAULTLEN      254     // default string length
 #define SC_TH_WAIT_TMO     1000
@@ -137,8 +142,7 @@ int ble_show_rxbuf(le_advertising_info * le_adv_info);
 int ble_fill_rxbuf(le_advertising_info * le_adv_info);
 int rxbuf2frames();
 SC_PARSEBUFFER scanner_frame_parser();
-
-unsigned char dsm_escape_TXbuf(unsigned char *buf, unsigned char nStart, unsigned char buflen);
+void process_data(uint8_t *data, size_t data_len, le_advertising_info *info);
 
 #endif
 

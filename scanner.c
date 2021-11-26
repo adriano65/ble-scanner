@@ -31,7 +31,7 @@
   #define DBG_MAX(fmt...) do { } while(0)
 #endif
 
-char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 } ;
+char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 };
 _LUCONFIG lu0cfg;
 static _Settings *settings;
 
@@ -112,10 +112,7 @@ int main(int argc, char *argv[]) {
 
 
 	// Get HCI device.
-	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) {
-		perror("Failed to open HCI device.");
-		return 0;
-		}
+	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) { DBG_MIN("Failed to open HCI device."); return 0; }
 
 	// Set BLE scan parameters.
 	le_set_scan_parameters_cp scan_params_cp;
@@ -130,7 +127,7 @@ int main(int argc, char *argv[]) {
 
 	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
 		hci_close_dev(hci_dev);
-		perror("Failed to set scan parameters data.");
+		DBG_MIN("Failed to set scan parameters data.");
 		return 0;
 		}
 
@@ -142,7 +139,7 @@ int main(int argc, char *argv[]) {
 	hci_rq = ble_hci_request(OCF_LE_SET_EVENT_MASK, LE_SET_EVENT_MASK_CP_SIZE, &status, &event_mask_cp);
 	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
 		hci_close_dev(hci_dev);
-		perror("Failed to set event mask.");
+		DBG_MIN("Failed to set event mask.");
 		return 0;
 		}
 
@@ -155,7 +152,7 @@ int main(int argc, char *argv[]) {
 
 	if ( (ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
 		hci_close_dev(hci_dev);
-		perror("Failed to enable scan.");
+		DBG_MIN("Failed to enable scan.");
 		return 0;
 		}
 
@@ -245,6 +242,61 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
     }
     
 }
+
+void AdvAnalyze_new(uint8_t * buf, int nbyte) {
+	le_advertising_info * le_adv_info;
+	evt_le_meta_event * meta_event;
+  //extended_inquiry_info * ext_inq_info;
+  uint8_t reports_count;
+  int count = 0;
+
+  if ( nbyte >= HCI_EVENT_HDR_SIZE ) {
+    DBG_MAX("count %d, nbyte %d\n", count, nbyte);
+    count++;
+    meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
+
+    if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
+      le_adv_info = (le_advertising_info *)(meta_event->data + 1);
+      DBG_MAX("Event %d, lenght %d", le_adv_info->evt_type, le_adv_info->length);
+
+      if (le_adv_info->length==0) return;
+
+      int current_index = 0;
+      int data_error = 0;
+
+      while(!data_error && current_index < le_adv_info->length) {
+        size_t data_len = le_adv_info->data[current_index];
+
+        if(data_len + 1 > le_adv_info->length) {
+          DBG_MIN("EIR data length is longer than EIR packet length. %d + 1 > %d", data_len, le_adv_info->length);
+          data_error = 1;
+          }
+        else {
+          #if 1
+          process_data(le_adv_info->data + current_index + 1, data_len, le_adv_info);
+          #else
+          if (settings->map.bit_vars.bScan) { 
+            ble_show_rxbuf(le_adv_info);
+            }
+          else { 
+            ble_fill_rxbuf(le_adv_info);
+            }
+          #endif
+          current_index += data_len + 1;
+        }
+      }
+
+      }
+    else { 
+      DBG_MIN("meta_event->subevent %d", meta_event->subevent);
+      }
+    }
+  else { 
+    DBG_MIN("nbyte %d", nbyte);
+    }
+    
+}
+
 
 void HandleSig(int signo) {
   if (signo==SIGINT || signo==SIGTERM) { End();  }
