@@ -119,6 +119,7 @@ union _dsm_map {
 };
 
 typedef struct _ble_dat {
+  uint16_t companyID;
   uint8_t sensorDataID[3];
   uint16_t temperature;
   uint16_t humidity;
@@ -143,6 +144,9 @@ int ble_fill_rxbuf(le_advertising_info * le_adv_info);
 int rxbuf2frames();
 SC_PARSEBUFFER scanner_frame_parser();
 void process_data(uint8_t *data, size_t data_len, le_advertising_info *info);
+
+bool GAP_Assigned_numbers(unsigned char idx, unsigned char gap_an);
+void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char sublen);
 
 #endif
 

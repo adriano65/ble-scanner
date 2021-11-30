@@ -135,9 +135,8 @@ void error_check_and_exit(struct hci_state current_hci_state)
 
 void process_data(uint8_t *data, size_t data_len, le_advertising_info *info)
 {
-  printw("Test: %p and %d\n", data, data_len);
-  if(data[0] == EIR_NAME_SHORT || data[0] == EIR_NAME_COMPLETE)
-  {
+  printw("Test: %p and %ld\n", data, data_len);
+  if(data[0] == EIR_NAME_SHORT || data[0] == EIR_NAME_COMPLETE) {
     size_t name_len = data_len - 1;
     char *name = malloc(name_len + 1);
     memset(name, 0, name_len + 1);
@@ -152,7 +151,7 @@ void process_data(uint8_t *data, size_t data_len, le_advertising_info *info)
   }
   else if(data[0] == EIR_FLAGS)
   {
-    printw("Flag type: len=%d\n", data_len);
+    printw("Flag type: len=%ld\n", data_len);
     int i;
     for(i=1; i<data_len; i++)
     {
@@ -161,7 +160,7 @@ void process_data(uint8_t *data, size_t data_len, le_advertising_info *info)
   }
   else if(data[0] == EIR_MANUFACTURE_SPECIFIC)
   {
-    printw("Manufacture specific type: len=%d\n", data_len);
+    printw("Manufacture specific type: len=%ld\n", data_len);
 
     // TODO int company_id = data[current_index + 2] 
 

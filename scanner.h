@@ -29,12 +29,10 @@ union _serprot_map {
         struct _serprot_bits bit_vars;      // data output as single bit field.
 };
 
-#include "scanner_parser.h"
-
 typedef struct __Settings {
   unsigned int HCIDevNumber;
-  char BDAddress[5][STDLEN];
-  int BDAddressEn[5];
+  bdaddr_t BDAddress[4];
+  int BDAddressEn[4];
   _ble_data *ble_data;
   unsigned int SerialTMO;
   union _serprot_map map;
@@ -47,7 +45,7 @@ void structsInit(void);
 void usage(char * argv[]);
 void HandleSig(int signo);
 void End(void);
-void SerialTMOManager();
+void BLE_TmoManager();
 void AdvAnalyze(uint8_t * buf, int nbyte);
 void AdvAnalyze_new(uint8_t * buf, int nbyte);
 

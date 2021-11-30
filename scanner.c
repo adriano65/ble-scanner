@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include "scanner_util.h"
+#include "scanner_parser.h"
 #include "scanner.h"
 
 #define SCANNER_DBG_MIN
@@ -61,7 +62,6 @@ int main(int argc, char *argv[]) {
 	int ret, status, opt, i, nbyte, retval, hci_dev;
   fd_set rdset;
   struct timeval tv;
-  struct hci_request hci_rq;
 
   lu0cfg.nLU=0;
   strncpy(lu0cfg.name, argv[0], STDLEN);
@@ -113,72 +113,43 @@ int main(int argc, char *argv[]) {
 
 	// Get HCI device.
 	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) { DBG_MIN("Failed to open HCI device."); return 0; }
+  hci_le_set_scan_enable(hci_dev, 0, 0, 10000); // disable in case already enabled
 
-  #if 1
-	// Set BLE scan parameters.
-	le_set_scan_parameters_cp scan_params_cp;
-	memset(&scan_params_cp, 0, sizeof(scan_params_cp));
-	scan_params_cp.type 			= 0x00; //Passive scanning
-	scan_params_cp.interval 		= htobs(8000);    // How frequently should scan (windows<interval)
-	scan_params_cp.window 			= htobs(500);    // How much time execute the scan (Time * 0.625 ms)
-	scan_params_cp.own_bdaddr_type 	= 0x00; // Public Device Address (default).
-	scan_params_cp.filter 			= 0x02; // Accept all.
+	// example https://github.com/dlenski/ttblue/blob/master/ttblue.c
+  struct hci_filter nf, of;
+  int len;
+  socklen_t olen = sizeof(of);
+  char addr_str[18];
+  le_advertising_info *info;
 
-	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_PARAMETERS, LE_SET_SCAN_PARAMETERS_CP_SIZE, &status, &scan_params_cp);
+	if (hci_le_set_scan_parameters(hci_dev, /* passive */ 0x00, htobs(0x10), htobs(0x10), LE_PUBLIC_ADDRESS, 0x00, 10000) < 0) {
+    fprintf(stderr, "Failed to set BLE scan parameters: %s (%d)\n", strerror(errno), errno);
+    return -1;
+    }
+  if (hci_le_set_scan_enable(hci_dev, 0x01, /* include dupes */ 0x00, 10000) < 0) {
+    fprintf(stderr, "Failed to enable BLE scan: %s (%d)\n", strerror(errno), errno);
+    return -1;
+  }
+  // save HCI filter and set it to capture all LE events
+  if (getsockopt(hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {return -1;}
 
-	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
-		hci_close_dev(hci_dev);
-		DBG_MIN("Failed to set scan parameters data.");
-		return 0;
-		}
+  hci_filter_clear(&nf);
+  hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
+  hci_filter_set_event(EVT_LE_META_EVENT, &nf);
 
-	// Set BLE events report mask.
-	le_set_event_mask_cp event_mask_cp;
-	memset(&event_mask_cp, 0, sizeof(le_set_event_mask_cp));
-	for ( i = 0 ; i < 8 ; i++ ) event_mask_cp.mask[i] = 0xFF;
+  if (setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {return -1;}
 
-	hci_rq = ble_hci_request(OCF_LE_SET_EVENT_MASK, LE_SET_EVENT_MASK_CP_SIZE, &status, &event_mask_cp);
-	if ((ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
-		hci_close_dev(hci_dev);
-		DBG_MIN("Failed to set event mask.");
-		return 0;
-		}
-  #endif
-
-	// Enable scanning.
-	le_set_scan_enable_cp le_scan_en_cp;
-	memset(&le_scan_en_cp, 0, sizeof(le_set_scan_enable_cp));
-	le_scan_en_cp.enable 		= 0x01;	// Enable flag.
-	le_scan_en_cp.filter_dup 	= 0x00; // Filtering disabled.
-	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &le_scan_en_cp);
-
-	if ( (ret = hci_send_req(hci_dev, &hci_rq, 1000)) < 0 ) {
-		hci_close_dev(hci_dev);
-		DBG_MIN("Failed to enable scan.");
-		return 0;
-		}
-
-	// Get Results.
-	struct hci_filter nf;
-	hci_filter_clear(&nf);
-	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
-	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
-	if ( setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0 ) {
-		hci_close_dev(hci_dev);
-		perror("Could not set socket options\n");
-		return 0;
-		}
 
 	while ( lu0cfg.Running ) {
     FD_ZERO(&rdset);
     FD_SET(0, &rdset);
     FD_SET(hci_dev, &rdset);
-    tv.tv_sec = 1;
+    tv.tv_sec = 4;
     tv.tv_usec = 0;
 
     retval = select(FD_SETSIZE, &rdset, NULL, NULL, &tv);
     if (!retval) {          	// select exited due to timeout
-      SerialTMOManager();
+      BLE_TmoManager();
       }
     else if (FD_ISSET(hci_dev, &rdset)) {
 	    DBG_MAX("ble activity");
@@ -189,22 +160,8 @@ int main(int argc, char *argv[]) {
 
 		}
 
-  /*
-  if (current_hci_state.state == HCI_STATE_FILTERING)	{
-    current_hci_state.state = HCI_STATE_SCANNING;
-    setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &current_hci_state.original_filter, sizeof(current_hci_state.original_filter));
-    }
-  */
-
-	memset(&le_scan_en_cp, 0, sizeof(le_set_scan_enable_cp));
-	le_scan_en_cp.enable = 0x00;	// Disable flag.
-	hci_rq = ble_hci_request(OCF_LE_SET_SCAN_ENABLE, LE_SET_SCAN_ENABLE_CP_SIZE, &status, &le_scan_en_cp);
-	if ((ret = hci_send_req(hci_dev, &hci_rq, 2500)) < 0 ) {
-		hci_close_dev(hci_dev);
-		DBG_MIN("Failed to disable scan: %s", strerror(errno));   //Connection timed out
-		return 0;
-	  }
-
+  if (setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &of, sizeof(of)) < 0)  return -1;
+  if (hci_le_set_scan_enable(hci_dev, 0x00, 1, 10000) < 0)  return -1;
 	DBG_MIN("Scanning disabled.");
 	hci_close_dev(hci_dev);
 
@@ -310,7 +267,7 @@ void End(void) {
   SLEEPMS(500);
 }
 
-void SerialTMOManager() {
+void BLE_TmoManager() {
   DBG_MIN(".");
 }
 
@@ -333,7 +290,7 @@ CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>1) {
     settings->HCIDevNumber=atoi(argv[1]);
-    DBG_MIN("HCIDevNumber[0] %d", settings->HCIDevNumber);
+    DBG_MIN("HCIDevNumber %d", settings->HCIDevNumber);
     }
   return CMD_EXECUTED_OK;
 }
@@ -343,29 +300,36 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   DBG_MAX("%d %s", argc, argv[1]);
 
+  if (argc>8) {
+    settings->BDAddressEn[3]=atoi(argv[8]);
+    DBG_MIN("BDAddress %s, enable %d", argv[7], settings->BDAddressEn[3]);
+    }
+  if (argc>7) {
+    str2ba(argv[7], &settings->BDAddress[3] );
+    }
+
   if (argc>6) {
     settings->BDAddressEn[2]=atoi(argv[6]);
+    DBG_MIN("BDAddress %s, enable %d", argv[5], settings->BDAddressEn[2]);
     }
   if (argc>5) {
-    strncpy(settings->BDAddress[2], argv[5], STDLEN-1);
-    settings->BDAddress[2][STDLEN-1] = '\0';
-    DBG_MIN("BDAddress 2 = %s", settings->BDAddress[2]);
+    str2ba(argv[5], &settings->BDAddress[2] );
     }
+
   if (argc>4) {
     settings->BDAddressEn[1]=atoi(argv[4]);
+    DBG_MIN("BDAddress %s, enable %d", argv[3], settings->BDAddressEn[1]);
     }
   if (argc>3) {
-    strncpy(settings->BDAddress[1], argv[3], STDLEN-1);
-    settings->BDAddress[1][STDLEN-1] = '\0';
-    DBG_MIN("BDAddress 1 = %s", settings->BDAddress[1]);
+    str2ba(argv[3], &settings->BDAddress[1] );
     }
+
   if (argc>2) {
     settings->BDAddressEn[0]=atoi(argv[2]);
+    DBG_MIN("BDAddress %s, enable %d", argv[1], settings->BDAddressEn[0]);
     }
   if (argc>1) {
-    strncpy(settings->BDAddress[0], argv[1], STDLEN-1);
-    settings->BDAddress[0][STDLEN-1] = '\0';
-    DBG_MIN("BDAddress 0 = %s", settings->BDAddress[0]);
+    str2ba(argv[1], &settings->BDAddress[0] );
     }
   
   return CMD_EXECUTED_OK;
