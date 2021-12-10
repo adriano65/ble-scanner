@@ -52,6 +52,12 @@ int main(int argc, char **argv){
   int device_handle;
   if((device_handle = hci_open_dev(device_id)) < 0) { perror("Could not open device"); exit(1); }
 
+  /* 1.   HCI_LE_Set_Advertising_Parameters - Used to set the advertising parameters.
+     2.   HCI_LE_Set_Advertising_Data - Used to set the data used in advertising packets that have a data field.
+     3.   HCI_LE_Set_Scan_Response_Data - Used to set the data used in scanning packets that have a data field.
+     4.   HCI_LE_Set_Advertise_Enable - Turn on Advertising.
+  */
+
   le_set_advertising_parameters_cp adv_params_cp;
   memset(&adv_params_cp, 0, sizeof(adv_params_cp));
   /* advertisement time in ms */

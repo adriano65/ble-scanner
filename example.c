@@ -285,9 +285,8 @@ int main(void) {
       {
         size_t data_len = info->data[current_index];
 
-        if(data_len + 1 > info->length)
-        {
-          printw("EIR data length is longer than EIR packet length. %d + 1 > %d", data_len, info->length);
+        if(data_len + 1 > info->length) {
+          printw("EIR data length is longer than EIR packet length. %ld + 1 > %d", data_len, info->length);
           data_error = 1;
         }
         else

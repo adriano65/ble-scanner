@@ -5,7 +5,7 @@
 #include "stdbool.h"
 
 #define SOFTREL 0x00	  // Software release
-#define SUBSREL 0x02    // Software subrelease
+#define SUBSREL 0x03    // Software subrelease
 
 typedef enum _SERIAL_PROTO {
 	SERPROT_RK03Y = 0,
@@ -16,10 +16,21 @@ typedef enum _SERIAL_PROTO {
 	SERPROT_TELTONIKA = 5,
 } SERIAL_PROTO;
 
+typedef struct _ble_dat {
+  uint16_t companyID;
+  uint8_t sensorDataID[3];
+  uint16_t temperature;
+  uint16_t humidity;
+  uint16_t luminosity;
+
+  uint8_t battery;
+
+} _ble_data;
+
 struct _serprot_bits {
-        uint8_t bRunning  : 1;
-        uint8_t bScan  : 1;
+        uint8_t bScanMode  : 1;
         uint8_t bTestMode  : 1;
+        uint8_t bScanEn  : 1;
         SERIAL_PROTO protocol  : 3;
         uint8_t spare  : 2;
 };
@@ -33,6 +44,8 @@ typedef struct __Settings {
   unsigned int HCIDevNumber;
   bdaddr_t BDAddress[4];
   int BDAddressEn[4];
+  int hci_dev;
+  uint16_t handle;
   _ble_data *ble_data;
   unsigned int SerialTMO;
   union _serprot_map map;
@@ -40,6 +53,7 @@ typedef struct __Settings {
 } _Settings;
 
 extern _LUCONFIG lu0cfg;
+extern _ble_data ble_data;
 
 void structsInit(void);
 void usage(char * argv[]);

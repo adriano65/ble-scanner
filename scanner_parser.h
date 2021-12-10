@@ -106,30 +106,17 @@ typedef enum _SC_FRAMESTAT {
   SC_RESTART_SEARCHING,
 } SC_FRAMESTAT;
 
-struct _dsm_bits {
+struct _parser_bits {
   uint8_t b_task  : 1;
   SC_FRAMESTAT FrameStat  : 4;
   uint8_t bEnableFrameParsing  : 1;  
   uint8_t spare  : 2;
 };
 
-union _dsm_map {
+union _parser_map {
   uint8_t bits;             // data input as 8-bit char
-  struct _dsm_bits bit_vars;      // data output as single bit field.
+  struct _parser_bits bit_vars;      // data output as single bit field.
 };
-
-typedef struct _ble_dat {
-  uint16_t companyID;
-  uint8_t sensorDataID[3];
-  uint16_t temperature;
-  uint16_t humidity;
-  uint16_t luminosity;
-
-  uint8_t battery;
-
-} _ble_data;
-
-extern _ble_data ble_data;
 
 void scanner_parser_init(void * param);
 void *scanner_parserThread(void *param);

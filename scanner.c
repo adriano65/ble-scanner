@@ -17,6 +17,7 @@
 
 #include "scanner_util.h"
 #include "scanner_parser.h"
+#include "scanner_connect.h"
 #include "scanner.h"
 
 #define SCANNER_DBG_MIN
@@ -34,7 +35,9 @@
 
 char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 };
 _LUCONFIG lu0cfg;
+_ble_data ble_data;
 static _Settings *settings;
+static struct termios orig_term, raw_term;
 
 struct CMDS Lu0cmds[] = {
     {"HCIDevNumber",            doHCIDevNumber, },
@@ -59,9 +62,9 @@ struct hci_request ble_hci_request(uint16_t ocf, int clen, void * status, void *
 
 int main(int argc, char *argv[]) {
 	uint8_t buf[HCI_MAX_EVENT_SIZE];
-	int ret, status, opt, i, nbyte, retval, hci_dev;
+  char ch = 0;
+	int opt, nbyte, retval;
   fd_set rdset;
-  struct timeval tv;
 
   lu0cfg.nLU=0;
   strncpy(lu0cfg.name, argv[0], STDLEN);
@@ -70,8 +73,9 @@ int main(int argc, char *argv[]) {
   lu0cfg.daemonize = FALSE;
   settings=(_Settings *)malloc(sizeof(_Settings));
   lu0cfg.Settings = settings;
-  settings->map.bit_vars.bScan=FALSE;
+  settings->map.bit_vars.bScanMode=FALSE;
   settings->map.bit_vars.bTestMode=FALSE;
+  settings->map.bit_vars.bScanEn=FALSE;  
 
   while ((opt = getopt(argc, argv, "?thns")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
@@ -85,7 +89,7 @@ int main(int argc, char *argv[]) {
         lu0cfg.daemonize = TRUE;
         break ;
       case 's' :
-        settings->map.bit_vars.bScan=TRUE;
+        settings->map.bit_vars.bScanMode=TRUE;
         break ;
       default:
         usage(argv);
@@ -106,95 +110,256 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGINT, HandleSig);
 	signal(SIGTERM, HandleSig);
-  scanner_parser_init(settings);
+  //   hciconfig hci0 reset
 
+  scanner_parser_init(settings);
+  scanner_connect_init(settings);
   lu0cfg.Running = TRUE;
 
 
 	// Get HCI device.
-	if ((hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) { DBG_MIN("Failed to open HCI device."); return 0; }
-  hci_le_set_scan_enable(hci_dev, 0, 0, 10000); // disable in case already enabled
+	if ((settings->hci_dev = hci_open_dev(settings->HCIDevNumber)) < 0 ) { DBG_MIN("Failed to open HCI device."); return 0; }
+  hci_le_set_scan_enable(settings->hci_dev, SCAN_DISABLED, 0, 10000); // disable in case already enabled
 
-	// example https://github.com/dlenski/ttblue/blob/master/ttblue.c
-  struct hci_filter nf, of;
-  int len;
-  socklen_t olen = sizeof(of);
-  char addr_str[18];
-  le_advertising_info *info;
-
-	if (hci_le_set_scan_parameters(hci_dev, /* passive */ 0x00, htobs(0x10), htobs(0x10), LE_PUBLIC_ADDRESS, 0x00, 10000) < 0) {
+  /* example https://github.com/dlenski/ttblue/blob/master/ttblue.c */
+	if (hci_le_set_scan_parameters(settings->hci_dev,
+                                 0x00, /* passive */
+                                 htobs(0x10), 
+                                 htobs(0x10), 
+                                 LE_PUBLIC_ADDRESS, 
+                                 0x00, /* filter_policy = 0x01; --> Whitelist */
+                                 3000) < 0) {
     fprintf(stderr, "Failed to set BLE scan parameters: %s (%d)\n", strerror(errno), errno);
     return -1;
     }
-  if (hci_le_set_scan_enable(hci_dev, 0x01, /* include dupes */ 0x00, 10000) < 0) {
+
+  hci_le_add_white_list(settings->hci_dev, &settings->BDAddress[3], LE_PUBLIC_ADDRESS, 1000);
+
+  if (hci_le_set_scan_enable(settings->hci_dev,
+                             settings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED,
+                             0x00,  /* include dupes */ 
+                             1000) < 0) {
     fprintf(stderr, "Failed to enable BLE scan: %s (%d)\n", strerror(errno), errno);
     return -1;
-  }
-  // save HCI filter and set it to capture all LE events
-  if (getsockopt(hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {return -1;}
+    }
 
+  struct hci_filter nf, of;
+  #if 0
+  struct hci_filter nf, of;
+  socklen_t olen = sizeof(of);
+
+  if (getsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
+    fprintf(stderr, "Failed to save original HCI filter %s (%d)\n", strerror(errno), errno);
+    return -1;
+    }
   hci_filter_clear(&nf);
   hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
   hci_filter_set_event(EVT_LE_META_EVENT, &nf);
+  // set new filter to capture all LE events
+  if (setsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
+    fprintf(stderr, "Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
+    return -1;
+    }
+  #endif
 
-  if (setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {return -1;}
+  // Get terminal settings and save a copy for later -----------------------------------------------
+  tcgetattr(STDIN_FILENO, &orig_term);
+  raw_term = orig_term;
+  // Turn off echoing and canonical mode
+  raw_term.c_lflag &= ~(ECHO | ICANON);
+  // Set min character limit and timeout to 0 so read() returns immediately
+  // whether there is a character available or not
+  raw_term.c_cc[VMIN] = 0;
+  raw_term.c_cc[VTIME] = 0;
+  // Apply new terminal settings
+  tcsetattr(STDIN_FILENO, TCSANOW, &raw_term);
 
-
-	while ( lu0cfg.Running ) {
+  //struct timeval tv;
+  struct timespec tp;
+	while ( lu0cfg.Running ) {    /* sudo btmon -i 0 is your friend */
     FD_ZERO(&rdset);
-    FD_SET(0, &rdset);
-    FD_SET(hci_dev, &rdset);
-    tv.tv_sec = 4;
-    tv.tv_usec = 0;
+    //FD_SET(0, &rdset);
+    FD_SET(settings->hci_dev, &rdset);
+    //tv.tv_sec = 1;
+    //tv.tv_usec = 0;
+    tp.tv_sec = 1;
+    tp.tv_nsec = 0;
 
-    retval = select(FD_SETSIZE, &rdset, NULL, NULL, &tv);
+    //retval = select(FD_SETSIZE, &rdset, NULL, NULL, &tv);
+    retval = pselect(FD_SETSIZE, &rdset, NULL, NULL, &tp, NULL);
     if (!retval) {          	// select exited due to timeout
       BLE_TmoManager();
       }
-    else if (FD_ISSET(hci_dev, &rdset)) {
-	    DBG_MAX("ble activity");
-		  if ((nbyte = read(hci_dev, buf, sizeof(buf)))>0) {
-	      AdvAnalyze(buf, nbyte);
-	      }
-	    }
+    else if (FD_ISSET(settings->hci_dev, &rdset)) {
+            DBG_MAX("ble activity");
+            if ((nbyte = read(settings->hci_dev, buf, sizeof(buf)))>0) {
+              AdvAnalyze(buf, nbyte);
+              }
+            else {DBG_MAX("nbyte %d", nbyte);}
+            }
+         else {DBG_MIN("FD_ISNOTSET");}
+
+    DBG_MAX("loop");
+    int len = read(STDIN_FILENO, &ch, 1);
+    if (len == 1) { 
+      switch (ch) {
+        case 'c':
+          printf("Connecting...\n");
+          set_scanner_sm(CONN_SM_CREATECONN);
+          break;
+
+        case 'x':
+          settings->map.bit_vars.bScanEn=settings->map.bit_vars.bScanEn ? FALSE : TRUE;
+          printf("%s BLE scan\n", settings->map.bit_vars.bScanEn ? "enable" : "disable");
+          if (hci_le_set_scan_enable(settings->hci_dev, settings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED, /* include dupes */ 0x00, 5000) < 0) {
+            DBG_MIN("Failed to disable BLE scan: %s (%d)", strerror(errno), errno);
+            }
+          break;
+
+        case '?':
+          printf("press single key for:\n");
+          printf("c - connect\n");
+          printf("x - disable/enable scan\n");
+          break;
+
+        default:
+          printf("You pressed char 0x%02x : %c\n", ch, (ch >= 32 && ch < 127) ? ch : ' ');
+          break;
+        }
+      }
 
 		}
 
-  if (setsockopt(hci_dev, SOL_HCI, HCI_FILTER, &of, sizeof(of)) < 0)  return -1;
-  if (hci_le_set_scan_enable(hci_dev, 0x00, 1, 10000) < 0)  return -1;
+	DBG_MIN("Exiting");
+  if (setsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &of, sizeof(of)) < 0)  return -1;
+  if (hci_le_set_scan_enable(settings->hci_dev, SCAN_DISABLED, 1, 500) < 0)  return -1;
 	DBG_MIN("Scanning disabled.");
-	hci_close_dev(hci_dev);
-
+	hci_close_dev(settings->hci_dev);
 	return 0;
 }
 
 void AdvAnalyze(uint8_t * buf, int nbyte) {
 	le_advertising_info * le_adv_info;
 	evt_le_meta_event * meta_event;
-  //extended_inquiry_info * ext_inq_info;
-  int count = 0;
+  char locbuf[64];
+  /*
+  int nRes;
+  evt_read_remote_features_complete * evt_read_remote_ft;
+  evt_read_remote_version_complete * evt_read_remote_ver;
+  char *ver;
+  uint8_t features[8];
+  struct hci_version version;
+  */
 
   if ( nbyte >= HCI_EVENT_HDR_SIZE ) {
-    DBG_MAX("count %d, nbyte %d\n", count, nbyte);
-    count++;
     meta_event = (evt_le_meta_event*)(buf+HCI_EVENT_HDR_SIZE+1);
 
-    if ( meta_event->subevent == EVT_LE_ADVERTISING_REPORT ) {
-      uint8_t reports_count = meta_event->data[0];
-      DBG_MAX("reports_count %d", reports_count);
-      void * offset = meta_event->data + 1;
-      while ( reports_count-- ) {
-        le_adv_info = (le_advertising_info *)offset;
-
-        if (settings->map.bit_vars.bScan) { ble_show_rxbuf(le_adv_info); }
+    switch (meta_event->subevent) {
+      case EVT_LE_ADVERTISING_REPORT:
+        le_adv_info = (le_advertising_info *)(meta_event->data + 1);
+        if (settings->map.bit_vars.bScanMode) { ble_show_rxbuf(le_adv_info); }
         else { ble_fill_rxbuf(le_adv_info); }
+        break;
 
-        offset = le_adv_info->data + le_adv_info->length + 2;
-        }
+      case EVT_LE_CONN_COMPLETE :
+        DBG_MIN("EVT_LE_CONN_COMPLETE");
+        evt_le_connection_complete *cc = (void *)meta_event->data;
+        /* Connection parameters:
+        cc->status: connection status (0x00: Connection successfully completed); 
+        cc->handle: connection handle to be used for the communication during the  connection;
+        */
+        if (cc->status) {
+          DBG_MIN("set_scanner_sm(CONN_SM_CONNFAILED)");
+          set_scanner_sm(CONN_SM_CONNFAILED);
+          }
+        else {
+          DBG_MIN("set_scanner_sm(CONN_SM_CONNCOMPLETE)");
+          settings->handle=cc->handle;
+          set_scanner_sm(CONN_SM_CONNCOMPLETE);
+          }
+        #if 0
+        /* ------------------------- */
+        nRes=hci_read_remote_version(settings->hci_dev, settings->hci_handle, &version, 5000);
+        if (nRes == 0) {
+            ver = lmp_vertostr(version.lmp_ver);
+            printf("\tLMP Version: %s (0x%x) LMP Subversion: 0x%x\n \tManufacturer: %s (%d)\n", ver ? ver : "n/a", version.lmp_ver, version.lmp_subver,
+              bt_compidtostr(version.manufacturer),
+              version.manufacturer);
+            if (ver)
+              bt_free(ver);
+          memset(features, 0, sizeof(features));
+          nRes=hci_le_read_remote_features(settings->hci_dev, settings->hci_handle, features, 5000);
+          if ( nRes < 0) {
+            DBG_MIN("hci_le_read_remote_features fail: nRes %d", nRes);
+            }
+          else {
+            printf("\tFeatures: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n", features[0], features[1], features[2], features[3], features[4], features[5], features[6], features[7]);
+            usleep(10000);
+            }
+          }
+        else {
+          DBG_MIN("Can't read_remote_version nRes, %d %s %d", nRes, strerror(errno), errno); 
+          }
+        DBG_MIN("hci_disconnect"); 
+        hci_disconnect(settings->hci_dev, settings->hci_handle, HCI_OE_USER_ENDED_CONNECTION, 1000);
+        #endif
+
+        break;
+
+      case EVT_CONN_REQUEST: {
+        evt_conn_request * evt_conn_rq = (evt_conn_request *)meta_event->data;
+        ba2str(&evt_conn_rq->bdaddr, locbuf);
+        DBG_MIN("EVT_CONN_REQUEST %s", locbuf );
+        } 
+        //DBG_MIN("EVT_CONN_REQUEST");
+        //set_scanner_sm(CONN_SM_CONNCOMPLETE);
+        break;
+
+      case EVT_READ_REMOTE_FEATURES_COMPLETE :
+        DBG_MIN("EVT_READ_REMOTE_FEATURES_COMPLETE");
+        /*
+        evt_read_remote_ft=(evt_read_remote_features_complete *)offset;
+        printf("\tFeatures: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n", evt_read_remote_ft->features[0], evt_read_remote_ft->features[1], evt_read_remote_ft->features[2], evt_read_remote_ft->features[3], evt_read_remote_ft->features[4], evt_read_remote_ft->features[5], evt_read_remote_ft->features[6], evt_read_remote_ft->features[7]);
+        */
+        break;
+
+      case EVT_READ_REMOTE_VERSION_COMPLETE :
+        DBG_MIN("EVT_READ_REMOTE_VERSION_COMPLETE");
+        /*
+        evt_read_remote_ver=(evt_read_remote_version_complete *)offset;
+        char *ver = lmp_vertostr(evt_read_remote_ver->lmp_ver);
+        printf("\tLMP Version: %s (0x%x) LMP Subversion: 0x%x\n \tManufacturer: %s (%d)\n", ver ? ver : "n/a", evt_read_remote_ver->lmp_ver, evt_read_remote_ver->lmp_subver,
+          bt_compidtostr(evt_read_remote_ver->manufacturer),
+          evt_read_remote_ver->manufacturer);
+        if (ver)
+          bt_free(ver);
+        */
+        #if 0
+        if (get_scanner_sm()==CONN_SM_WAITCONN) {
+            set_scanner_sm(CONN_SM_EVT_READ_REMOTE_VERSION_COMPLETE);
+            }
+        #endif
+        break;
+
+      case EVT_DISCONN_COMPLETE:
+        DBG_MIN("EVT_DISCONN_COMPLETE");
+        break;
+
+      case 0:
+        DBG_MIN("EVT 0");
+        //set_scanner_sm(CONN_SM_CONNCOMPLETE);
+        //tcflush(settings->hci_dev, TCIOFLUSH);
+        break;
+
+      case EVT_ROLE_CHANGE:
+        DBG_MIN("EVT_ROLE_CHANGE");
+        break;
+
+      default :
+        DBG_MIN("meta_event->subevent %d", meta_event->subevent);
+        break;
       }
-    else { 
-      DBG_MIN("meta_event->subevent %d", meta_event->subevent);
-      }
+
     }
   else { 
     DBG_MIN("nbyte %d", nbyte);
@@ -205,8 +370,6 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
 void AdvAnalyze_new(uint8_t * buf, int nbyte) {
 	le_advertising_info * le_adv_info;
 	evt_le_meta_event * meta_event;
-  //extended_inquiry_info * ext_inq_info;
-  uint8_t reports_count;
   int count = 0;
 
   if ( nbyte >= HCI_EVENT_HDR_SIZE ) {
@@ -258,17 +421,28 @@ void AdvAnalyze_new(uint8_t * buf, int nbyte) {
 
 
 void HandleSig(int signo) {
-  if (signo==SIGINT || signo==SIGTERM) { End();  }
+  if (signo==SIGINT || signo==SIGTERM) { End(); }
   else { DBG_MIN("unexpected signal: %d exiting anyway", signo); exit(0); }
 }
 
 void End(void) {
+  scanner_parser_end(settings);
+  scanner_connect_end(settings);
   lu0cfg.Running = FALSE;
-  SLEEPMS(500);
+  SLEEPMS(700);
+  // Make sure no characters are left in the input stream as plenty of keys emit ESC sequences, otherwise they'll appear on the command-line after we exit.
+  //while(read(STDIN_FILENO, &ch, 1)==1);
+  // Restore original terminal settings
+  tcsetattr(STDIN_FILENO, TCSANOW, &orig_term);    
+  exit(0);
 }
 
 void BLE_TmoManager() {
   DBG_MIN(".");
+  tcflush(settings->hci_dev, TCIOFLUSH);
+  //pthread_mutex_lock(&gps_mutex);
+  // ADD here
+  //pthread_mutex_unlock(&gps_mutex);
 }
 
 void usage(char * argv[]) {
@@ -302,7 +476,7 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>8) {
     settings->BDAddressEn[3]=atoi(argv[8]);
-    DBG_MIN("BDAddress %s, enable %d", argv[7], settings->BDAddressEn[3]);
+    DBG_MIN("BDAddress[3] %s, enable %d", argv[7], settings->BDAddressEn[3]);
     }
   if (argc>7) {
     str2ba(argv[7], &settings->BDAddress[3] );
@@ -310,7 +484,7 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>6) {
     settings->BDAddressEn[2]=atoi(argv[6]);
-    DBG_MIN("BDAddress %s, enable %d", argv[5], settings->BDAddressEn[2]);
+    DBG_MIN("BDAddress[2] %s, enable %d", argv[5], settings->BDAddressEn[2]);
     }
   if (argc>5) {
     str2ba(argv[5], &settings->BDAddress[2] );
@@ -318,7 +492,7 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>4) {
     settings->BDAddressEn[1]=atoi(argv[4]);
-    DBG_MIN("BDAddress %s, enable %d", argv[3], settings->BDAddressEn[1]);
+    DBG_MIN("BDAddress[1] %s, enable %d", argv[3], settings->BDAddressEn[1]);
     }
   if (argc>3) {
     str2ba(argv[3], &settings->BDAddress[1] );
@@ -326,7 +500,7 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
 
   if (argc>2) {
     settings->BDAddressEn[0]=atoi(argv[2]);
-    DBG_MIN("BDAddress %s, enable %d", argv[1], settings->BDAddressEn[0]);
+    DBG_MIN("BDAddress[0] %s, enable %d", argv[1], settings->BDAddressEn[0]);
     }
   if (argc>1) {
     str2ba(argv[1], &settings->BDAddress[0] );

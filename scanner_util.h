@@ -14,6 +14,9 @@
 #define STDLEN 		80               // standard length for string definitions
 #define RXBUFLEN	180
 
+//#define ENABLE	0x01
+//#define DISABLE	0x00
+
 #define STATUS_TOPIC	"mdvr/status"
 
 #define LINEBUFFER	      512

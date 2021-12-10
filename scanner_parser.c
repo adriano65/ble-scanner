@@ -44,8 +44,7 @@ static SC_STATEM SCsm;
 static unsigned int SCtmo;
 static le_advertising_info *le_adv_inf;
 
-_ble_data ble_data;
-static union _dsm_map map;
+static union _parser_map map;
 
 void scanner_parser_init(void * param) {
   _Settings *pSettings = (_Settings *)param;
@@ -175,7 +174,8 @@ void *scanner_parserThread(void *param) {
       }
     }
   DBG_MIN("end.");
-	return 0;
+  pthread_exit(NULL) ;        // terminate thread
+  return(NULL);
 }
 
 void scanner_parser_end(void * param) {
@@ -386,17 +386,16 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
       break;
 
     case 0x03:
-      printf("16-bit Service Class UUID 0x%02X%02X", (unsigned char)le_adv_inf->data[idx+1], (unsigned char)le_adv_inf->data[idx+2]);
+      printf("16-bit Svc Class UUID 0x%02X%02X", (unsigned char)le_adv_inf->data[idx+1], (unsigned char)le_adv_inf->data[idx+2]);
       break;
 
     case 0x08:
       printf("Dev name 0x%02X", (unsigned char)le_adv_inf->data[idx+1]);
       break;
 
-    //case 0x16:
-    //  printf("Service Data - 16-bit UUID 0x%02X%02X", (unsigned char)le_adv_inf->data[idx+1], (unsigned char)le_adv_inf->data[idx+2]);
-    //  bRet=FALSE;
-    //  break;
+    case 0x09:
+      printf("Complete Dev name "); for (int i=1; i<sublen; i++) printf("%c", (unsigned char)le_adv_inf->data[idx+i]);
+      break;
 
     case 0xFF:
       ble_data.sensorDataID[0]=le_adv_inf->data[idx+1];
