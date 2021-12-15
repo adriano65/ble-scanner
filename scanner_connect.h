@@ -4,12 +4,20 @@
 #include "stdint.h"
 #include "stdbool.h"
 
-#define CONN_TH_WAIT_TMO     500
+#define CONN_TH_WAIT_TMO     10
 #define CONN_MAXDATALENGTH        255
-#define CREATE_CONN_TMO     20000
+#define CREATE_CONN_TMO     25000
+#define WAIT_CONN_TMO       CREATE_CONN_TMO/CONN_TH_WAIT_TMO + 1000
+#define WAIT_DATA_TMO       CREATE_CONN_TMO/CONN_TH_WAIT_TMO + 1000
+
 
 typedef enum _CONN_STATEM {
 	CONN_SM_WAIT,
+  CONN_SM_RESETDONGLE,
+  CONN_SM_OPENDEV,
+  CONN_SM_SETSCANPARAM,
+  CONN_SM_ADDWHITELIST,
+  CONN_SM_TOGGLE_SCAN,
   CONN_SM_CREATECONN,
   CONN_SM_WAITCONN,
   CONN_SM_CONNCOMPLETE,
@@ -29,25 +37,16 @@ typedef enum _CONN_PARSEBUFFER {
   CONN_PARSEBUFFER_ERROR,
 } CONN_PARSEBUFFER;
 
-typedef enum _CONN_FRAMESTAT {
-  CONN_SEARCHING_START_OF_FRAME,
-  CONN_ON_FRAME,
-
-  CONN_ON_7E_OR_7D_ESC_FIRSTVAL,
-  CONN_GO_PARSE_FRAME,
-  CONN_RESTART_SEARCHING,
-} CONN_FRAMESTAT;
-
-struct _dsm_bits {
+struct _conn_bits {
   uint8_t b_task  : 1;
-  CONN_FRAMESTAT FrameStat  : 4;
   uint8_t bEnableFrameParsing  : 1;  
-  uint8_t spare  : 2;
+  uint8_t bEnableSpare  : 1;  
+  uint8_t spare  : 5;
 };
 
-union _dsm_map {
+union _conn_map {
   uint8_t bits;             // data input as 8-bit char
-  struct _dsm_bits bit_vars;      // data output as single bit field.
+  struct _conn_bits bit_vars;      // data output as single bit field.
 };
 
 void scanner_connect_init(void * param);

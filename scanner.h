@@ -49,7 +49,8 @@ typedef struct __Settings {
   _ble_data *ble_data;
   unsigned int SerialTMO;
   union _serprot_map map;
-  pthread_t SerialThread;
+  int createConnTent;
+  int readRemotenTent;
 } _Settings;
 
 extern _LUCONFIG lu0cfg;

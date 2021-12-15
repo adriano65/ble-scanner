@@ -38,7 +38,7 @@
   #define DBG_MAX(fmt...) do { } while(0)
 #endif
 
-static pthread_t frameThread;
+static pthread_t parserThread;
 static pthread_mutex_t mutex;
 static SC_STATEM SCsm;
 static unsigned int SCtmo;
@@ -57,7 +57,7 @@ void scanner_parser_init(void * param) {
 
   le_adv_inf=(le_advertising_info *)malloc(sizeof(le_advertising_info)+128);
   //(uint8_t *)&(le_adv_inf->data)=(uint8_t *)malloc(128);
-  pthread_create(&frameThread, NULL, scanner_parserThread, (void *)pSettings);
+  pthread_create(&parserThread, NULL, scanner_parserThread, (void *)pSettings);
 }
 
 
@@ -180,12 +180,11 @@ void *scanner_parserThread(void *param) {
 
 void scanner_parser_end(void * param) {
   //int retcode ;
-  //void * retval ;
+  void * retval;
   //_Settings *pSettings = (_Settings *)param;
 
   map.bit_vars.b_task=FALSE;
-  //if ( (retcode = pthread_join(frameThread, &retval)) ) {}
-  SLEEPMS(200);
+  pthread_join(parserThread, &retval);
 }
 
 

@@ -47,51 +47,130 @@ static CONN_STATEM CONNsm;
 static unsigned int CONNtmo;
 static le_advertising_info *le_adv_inf;
 
-static union _dsm_map map;
+static union _conn_map map;
 
 void scanner_connect_init(void * param) {
   _Settings *pSettings = (_Settings *)param;
 
   CONNtmo=CONN_TH_WAIT_TMO;
-  CONNsm=CONN_SM_WAIT;
+  CONNsm=CONN_SM_RESETDONGLE;
 	map.bit_vars.b_task=TRUE;
   map.bit_vars.bEnableFrameParsing=FALSE;
 
   le_adv_inf=(le_advertising_info *)malloc(sizeof(le_advertising_info)+128);
-  pthread_create(&smThread, NULL, scanner_connectThread, (void *)pSettings);
+  if( pthread_create(&smThread, NULL, scanner_connectThread, (void *)pSettings) != 0) { DBG_MIN("pthread_create error");} 
 }
 
 void *scanner_connectThread(void *param) {
-  _Settings *pSettings = (_Settings *)param;
+  _Settings *pSettings = (_Settings *)param;  
 	int nTMOCnt=0;
 
+  SLEEPMS(CONNtmo*20);    // waiting sensors filling data...
 	while(map.bit_vars.b_task) {
-    SLEEPMS(CONNtmo);    // waiting sensors filling data...
+    SLEEPMS(CONNtmo);
     switch (CONNsm) {
       case CONN_SM_WAIT:
-        //nTMOCnt++;
-        if (((nTMOCnt++) % 4) == 0) { DBG_MIN("CONN_SM_WAIT"); }
-        //CONNtmo=250;
+        if (((nTMOCnt++) % 40) == 0) { DBG_MIN("CONN_SM_WAIT nTMOCnt %d", nTMOCnt); }
+        break;
+
+      case CONN_SM_RESETDONGLE:
+        DBG_MIN("CONN_SM_RESETDONGLE");
+        if (pSettings->hci_dev) hci_close_dev(pSettings->hci_dev);
+        system("sudo hciconfig hci0 reset");
+        //struct hci_request req;
+        //hci_reset_req(&req, NULL);
+        //set_bit(HCI_RESET, &req->hdev->flags);
+        //hci_req_add(req, HCI_OP_RESET, 0, NULL);
+        SLEEPMS(1000);
+        CONNsm=CONN_SM_OPENDEV;
+        break;
+
+      case CONN_SM_OPENDEV:
+        DBG_MIN("CONN_SM_OPENDEV");
+        if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
+          DBG_MIN("Failed to open HCI device.");
+          CONNsm=CONN_SM_WAIT;
+          } 
+        else {
+          hci_le_set_scan_enable(pSettings->hci_dev, SCAN_DISABLED, 0, 10000); // disable in case already enabled
+          CONNsm=CONN_SM_SETSCANPARAM;
+          }
+        break;
+
+      case CONN_SM_SETSCANPARAM:
+        DBG_MIN("CONN_SM_SETSCANPARAM");
+        /* example https://github.com/dlenski/ttblue/blob/master/ttblue.c */
+        if (hci_le_set_scan_parameters(pSettings->hci_dev,
+                                      0x00, /* passive */
+                                      htobs(0x10), 
+                                      htobs(0x10), 
+                                      LE_PUBLIC_ADDRESS, 
+                                      0x00, /* filter_policy = 0x01; --> Whitelist */
+                                      1000) < 0) {
+          DBG_MIN("Failed to set BLE scan parameters: %s (%d)", strerror(errno), errno);
+          CONNsm=CONN_SM_WAIT;
+          }
+        else {
+          CONNsm=CONN_SM_ADDWHITELIST;
+          }
+        break;
+
+      case CONN_SM_ADDWHITELIST:
+        DBG_MIN("CONN_SM_ADDWHITELIST");
+        hci_le_add_white_list(pSettings->hci_dev, &pSettings->BDAddress[3], LE_PUBLIC_ADDRESS, 1000);
+        CONNsm=CONN_SM_WAIT;
+        break;
+
+      case CONN_SM_TOGGLE_SCAN:
+        DBG_MIN("CONN_SM_ENABLE_SCAN");
+        if (hci_le_set_scan_enable(pSettings->hci_dev,
+                                  pSettings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED,
+                                  0x00,  /* include dupes */ 
+                                  1000) < 0) {
+          DBG_MIN("Failed to enable BLE scan: %s (%d)", strerror(errno), errno);
+          CONNsm=CONN_SM_WAIT;
+          }
+        else {
+          CONNsm=CONN_SM_WAIT;
+          //CONNsm=CONN_SM_ENABLE_SCAN;
+          }
         break;
 
       case CONN_SM_CREATECONN:
         DBG_MIN("CONN_SM_CREATECONN");
-        pthread_create(&createConnTh, NULL, createConn_Th, (void *)pSettings);
-        CONNsm=CONN_SM_WAITCONN;
+        if (pSettings->createConnTent) { 
+          DBG_MIN("Thread is running");
+          pSettings->createConnTent=0;
+          //pthread_kill(createConnTh, SIGKILL);
+          //DBG_MIN("Killed.");
+          }
+        else {
+          DBG_MIN("Creating Thread");
+          }
+        pthread_create(&createConnTh, NULL, createConn_Th, (void *)pSettings);          
+        nTMOCnt=0; CONNsm=CONN_SM_WAITCONN;
         break;
         
       case CONN_SM_WAITCONN:
-        if (((nTMOCnt++) % 4) == 0) { DBG_MIN("CONN_SM_WAITCONN"); }
+        if (((nTMOCnt++) % 40) == 0) { DBG_MIN("CONN_SM_WAITCONN nTMOCnt %d", nTMOCnt); }
+        if (nTMOCnt>WAIT_CONN_TMO) {
+          CONNsm=CONN_SM_WAIT;
+          }
         break;
         
       case CONN_SM_CONNCOMPLETE:
         DBG_MIN("CONN_SM_CONNCOMPLETE hci_dev %d handle %d", pSettings->hci_dev, pSettings->handle);
         pthread_create(&readRemoteVerTh, NULL, readRemoteVer_Th, (void *)pSettings);
-        CONNsm=CONN_SM_WAITDATA;
+        nTMOCnt=0; CONNsm=CONN_SM_WAITDATA;
         break;
 
       case CONN_SM_WAITDATA:
-        if (((nTMOCnt++) % 4) == 0) { DBG_MIN("CONN_SM_WAITDATA"); }
+        if (((nTMOCnt++) % 40) == 0) { DBG_MIN("CONN_SM_WAITDATA nTMOCnt %d", nTMOCnt); }
+
+        if ( nTMOCnt>WAIT_DATA_TMO ) {
+          DBG_MIN("WAIT_DATA_TMO elapsed"); 
+          CONNsm=CONN_SM_WAIT;
+          }
         break;
 
       case CONN_SM_DISCONN:
@@ -100,8 +179,10 @@ void *scanner_connectThread(void *param) {
         //int hci_le_conn_update(int dd, uint16_t handle, uint16_t min_interval,uint16_t max_interval, uint16_t latency,uint16_t supervision_timeout, int to);
         if (pSettings->handle) {
           DBG_MIN("hci_disconnect");
-          hci_disconnect(pSettings->hci_dev, pSettings->handle, HCI_OE_USER_ENDED_CONNECTION, CONN_TH_WAIT_TMO-10);
+          hci_disconnect(pSettings->hci_dev, pSettings->handle, HCI_OE_USER_ENDED_CONNECTION, 5000);
           pSettings->handle=0;
+          //pthread_kill(createConnTh, SIGKILL);
+          hci_close_dev(pSettings->hci_dev);
           }
         #endif
         CONNsm=CONN_SM_WAIT;
@@ -109,7 +190,7 @@ void *scanner_connectThread(void *param) {
 
       case CONN_SM_EVT_READ_REMOTE_VERSION_COMPLETE:
         DBG_MIN("CONN_SM_EVT_READ_REMOTE_VERSION_COMPLETE");
-        CONNsm=CONN_SM_WAITDATA;
+        nTMOCnt=0; CONNsm=CONN_SM_WAITDATA;
         break;
 
       case CONN_SM_CONNFAILED:
@@ -138,12 +219,11 @@ void *scanner_connectThread(void *param) {
 
 void scanner_connect_end(void * param) {
   //int retcode ;
-  //void * retval ;
+  void * retval;
   //_Settings *pSettings = (_Settings *)param;
 
   map.bit_vars.b_task=FALSE;
-  //if ( (retcode = pthread_join(frameThread, &retval)) ) {}
-  SLEEPMS(200);
+  pthread_join(smThread, &retval);
 }
 
 void set_scanner_sm(CONN_STATEM newstate) {
@@ -162,38 +242,40 @@ CONN_STATEM get_scanner_sm() {
 
 void *createConn_Th(void *param) {
   _Settings *pSettings = (_Settings *)param;
-	int nRes, nTent=40;
+	int nRes;
+  pSettings->createConnTent=1;
 
-  while (nTent--) {
-    DBG_MIN("nTent %d", nTent);
+  while (pSettings->createConnTent--) {
+    DBG_MIN("Creating conn");
     nRes = hci_le_create_conn(pSettings->hci_dev, 
-                              htobs(0x0500),  /* interval ( htobs(0x0004) )*/
-                              htobs(0x0400),  /* window  ( < interval) ( htobs(0x0004) )*/
+                              htobs(0x0004),  /* interval ( htobs(0x0004), htobs(0x0500) )*/
+                              htobs(0x0004),  /* window  ( < interval) ( htobs(0x0004), htobs(0x0200) )*/
                               0,              /* initiator filter */
-                              LE_RANDOM_ADDRESS, 
+                              LE_PUBLIC_ADDRESS, 
                               pSettings->BDAddress[3], 
                               LE_PUBLIC_ADDRESS,
                               htobs(0x000F),  /*min_interval*/
                               htobs(0x000F),  /*max_interval*/
-                              htobs(20),       /*latency*/
-                              //htobs(CREATE_CONN_TMO/10),  /*supervision_timeout 0xC80==32000 ms, 3E8 == 10000 ms, 1F4 == 5000 ms */ 
-                              htobs(0x1F4),  /*supervision_timeout 0xC80==32000 ms, 3E8 == 10000 ms, 1F4 == 5000 ms */ 
-                              htobs(0x0000),  /* min connection length */
-                              htobs(0x0000),  /* max connection length */
+                              htobs(0),       /*latency*/
+                              htobs(0xC80),  /*supervision_timeout 0xC80==32000 ms, 3E8 == 10000 ms, 1F4 == 5000 ms, FA == 2500 ms */ 
+                              htobs(0x0001),  /* min connection length */
+                              htobs(0x0001),  /* max connection length */
                               &pSettings->handle, 
-                              2000);             /* tmo before exit (if 0 wait forever) */
+                              CREATE_CONN_TMO);             /* tmo before exit (if 0 wait forever) */
     if ( nRes < 0 ) {
-      DBG_MIN("hci_le_create_conn, fails (%d)", nRes);
-      //if (get_scanner_sm()!=CONN_SM_WAITCONN) break;
-      continue;
+      DBG_MIN("fails (nRes %d, nTent %d)", nRes, pSettings->createConnTent);
+      SLEEPMS(1500);
+      set_scanner_sm(CONN_SM_RESETDONGLE);
+      break;
       }
     else {
-      DBG_MIN("hci_le_create_conn, ok (%d)", nRes);
+      DBG_MIN("ok (pSettings->handle %d, nTent %d)", pSettings->handle, pSettings->createConnTent);
       set_scanner_sm(CONN_SM_CONNCOMPLETE);
       break;
       }
     }
-  pthread_exit(NULL) ;        // terminate thread
+  DBG_MIN("terminate thread");
+  pthread_exit(NULL);
   return(NULL);
 }
 
@@ -203,24 +285,25 @@ void *readRemoteVer_Th(void *param) {
   uint8_t features[8];
   struct hci_version version;
   //BtIOConnect connect_cb;
-	int nRes, nTent=2;
+	int nRes, nTent=1;
 
   while (nTent--) {
     DBG_MIN("nTent %d", nTent);
-    nRes=hci_read_remote_version(pSettings->hci_dev, pSettings->handle, &version, 2000);
+    nRes=hci_read_remote_version(pSettings->hci_dev, pSettings->handle, &version, 5000);
     if (nRes == 0) {
         ver = lmp_vertostr(version.lmp_ver);
-        printf("LMP Version: %s (0x%x) LMP Subversion: 0x%x\nManufacturer: %s (%d)\n", ver ? ver : "n/a", version.lmp_ver, version.lmp_subver, bt_compidtostr(version.manufacturer),version.manufacturer);
+        printf("LMP Version: %s (0x%x) LMP Subversion: 0x%x\n", ver ? ver : "n/a", version.lmp_ver, version.lmp_subver);
+        printf("Manufacturer: %s (%d)\n", bt_compidtostr(version.manufacturer), version.manufacturer);
         if (ver)
           bt_free(ver);
       bzero(features, sizeof(features));
-      nRes=hci_le_read_remote_features(pSettings->hci_dev, pSettings->handle, features, 2000);
+      nRes=hci_le_read_remote_features(pSettings->hci_dev, pSettings->handle, features, 5000);
       if ( nRes < 0) {
         DBG_MIN("hci_le_read_remote_features fail: nRes %d", nRes);
         break;
         }
       else {
-        printf("\tFeatures: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n", features[0], features[1], features[2], features[3], features[4], features[5], features[6], features[7]);
+        printf("Features: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n", features[0], features[1], features[2], features[3], features[4], features[5], features[6], features[7]);
         break;
         }
       }
