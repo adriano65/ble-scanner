@@ -36,7 +36,7 @@
 char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 };
 _LUCONFIG lu0cfg;
 _ble_data ble_data;
-static _Settings *settings;
+static _Settings *pSettings;
 static struct termios orig_term, raw_term;
 
 struct CMDS Lu0cmds[] = {
@@ -71,16 +71,16 @@ int main(int argc, char *argv[]) {
   gethostname(lu0cfg.HWCode, STDLEN);
   lu0cfg.cmds=Lu0cmds;
   lu0cfg.daemonize = FALSE;
-  settings=(_Settings *)malloc(sizeof(_Settings));
-  lu0cfg.Settings = settings;
-  settings->map.bit_vars.bScanMode=FALSE;
-  settings->map.bit_vars.bTestMode=FALSE;
-  settings->map.bit_vars.bScanEn=FALSE;  
+  pSettings=(_Settings *)malloc(sizeof(_Settings));
+  lu0cfg.Settings = pSettings;
+  pSettings->map.bit_vars.bScanMode=FALSE;
+  pSettings->map.bit_vars.bTestMode=FALSE;
+  pSettings->map.bit_vars.bScanEn=FALSE;
 
-  while ((opt = getopt(argc, argv, "?thns")) != -1) {		//: semicolon means that option need an arg!
+  while ((opt = getopt(argc, argv, "?thnsS")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 't' :
-        settings->map.bit_vars.bTestMode=TRUE;
+        pSettings->map.bit_vars.bTestMode=TRUE;
         break ;
       case 'h' :
         usage(argv);
@@ -88,8 +88,12 @@ int main(int argc, char *argv[]) {
       case 'n' :
         lu0cfg.daemonize = TRUE;
         break ;
+      case 'S' :
+        pSettings->map.bit_vars.bScanMode=TRUE;
+        pSettings->map.bit_vars.bScanEn=TRUE;
+        break ;
       case 's' :
-        settings->map.bit_vars.bScanMode=TRUE;
+        pSettings->map.bit_vars.bScanEn=TRUE;
         break ;
       default:
         usage(argv);
@@ -99,6 +103,8 @@ int main(int argc, char *argv[]) {
 
   printf("\n%s\nLoad configuration...\n%s\n", banner, lu0cfg.daemonize ? "Log to file" : "Log to stdout");
   if (LoadConfig(&lu0cfg)) { DBG_MIN("Bad or missing configuration file"); return FALSE; }
+  if(geteuid() != 0) { printf("must run as root!\n"); return 0; }
+
   // Check daemonization
   if (lu0cfg.daemonize) {
     printf("Running as daemon...\n");
@@ -111,16 +117,19 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT, HandleSig);
 	signal(SIGTERM, HandleSig);
 
-  scanner_parser_init(settings);
-  scanner_connect_init(settings);
+  scanner_parser_init(pSettings);
+  scanner_connect_init(pSettings);
   lu0cfg.Running = TRUE;
 
 
-  #if 0
+  #if 1
   struct hci_filter of;
   socklen_t olen = sizeof(of);
 
-  if (getsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
+  if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
+    DBG_MIN("Failed hci_open_dev %s (%d)\n", strerror(errno), errno);
+    }
+  if (getsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
     DBG_MIN("Failed to save original HCI filter %s (%d)\n", strerror(errno), errno);
     return -1;
     }
@@ -129,7 +138,7 @@ int main(int argc, char *argv[]) {
   hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
   hci_filter_set_event(EVT_LE_META_EVENT, &nf);
   // set new filter to capture all LE events
-  if (setsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
+  if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
     fprintf(stderr, "Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
     return -1;
     }
@@ -151,27 +160,23 @@ int main(int argc, char *argv[]) {
   //struct timespec tp;
 	while ( lu0cfg.Running ) {    /* sudo btmon -i 0 is your friend */
     FD_ZERO(&rdset);
-    //FD_SET(0, &rdset);
-    FD_SET(settings->hci_dev, &rdset);
+    FD_SET(STDIN_FILENO, &rdset);
+    FD_SET(pSettings->hci_dev, &rdset);
     tv.tv_sec = 1;
     tv.tv_usec = 0;
-    //tp.tv_sec = 1;
-    //tp.tv_nsec = 0;
 
     retval = select(FD_SETSIZE, &rdset, NULL, NULL, &tv);
     //retval = pselect(FD_SETSIZE, &rdset, NULL, NULL, &tp, NULL);
     if (!retval) {          	// select exited due to timeout
       BLE_TmoManager();
       }
-    else if (FD_ISSET(settings->hci_dev, &rdset)) {
+    else if (FD_ISSET(pSettings->hci_dev, &rdset)) {
             DBG_MAX("ble activity");
-            if ((nbyte = read(settings->hci_dev, buf, sizeof(buf)))>0) {
+            if ((nbyte = read(pSettings->hci_dev, buf, sizeof(buf)))>0) {
               AdvAnalyze(buf, nbyte);
               }
             else {DBG_MAX("nbyte %d", nbyte);}
             }
-         else { DBG_MIN("FD_ISNOTSET"); }
-
     DBG_MAX("loop");
     int len = read(STDIN_FILENO, &ch, 1);
     if (len == 1) { 
@@ -181,19 +186,26 @@ int main(int argc, char *argv[]) {
           set_scanner_sm(CONN_SM_CREATECONN);
           break;
 
+        case 'q':
+          printf("quitting...\n");
+          End();
+          lu0cfg.Running=FALSE;
+          break;
+
         case 'r':
           printf("Resetting Dongle...\n");
           set_scanner_sm(CONN_SM_RESETDONGLE);
           break;
 
         case 'x':
-          settings->map.bit_vars.bScanEn=settings->map.bit_vars.bScanEn ? FALSE : TRUE;
+          pSettings->map.bit_vars.bScanEn=pSettings->map.bit_vars.bScanEn ? FALSE : TRUE;
           set_scanner_sm(CONN_SM_TOGGLE_SCAN);
           break;
 
         case '?':
           printf("press single key for:\n");
           printf("c - connect\n");
+          printf("q - quit\n");
           printf("r - reset bt adapter\n");
           printf("x - disable/enable scan\n");
           break;
@@ -203,16 +215,12 @@ int main(int argc, char *argv[]) {
           break;
         }
       }
-
 		}
-
-	DBG_MIN("Exiting");
-
-  //if (setsockopt(settings->hci_dev, SOL_HCI, HCI_FILTER, &of, sizeof(of)) < 0)  return -1;
-
-  if (hci_le_set_scan_enable(settings->hci_dev, SCAN_DISABLED, 1, 500) < 0)  return -1;
+	DBG_MIN("Exiting...");
+  //if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &of, sizeof(of)) < 0)  return -1;
+  hci_le_set_scan_enable(pSettings->hci_dev, SCAN_DISABLED, 1, 500);
 	DBG_MIN("Scanning disabled.");
-	hci_close_dev(settings->hci_dev);
+	hci_close_dev(pSettings->hci_dev);
 	return 0;
 }
 
@@ -227,8 +235,12 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
     switch (meta_event->subevent) {
       case EVT_LE_ADVERTISING_REPORT:
         le_adv_info = (le_advertising_info *)(meta_event->data + 1);
-        if (settings->map.bit_vars.bScanMode) { ble_show_rxbuf(le_adv_info); }
-        else { ble_fill_rxbuf(le_adv_info); }
+        if (pSettings->map.bit_vars.bScanMode) { 
+          ble_show_rxbuf(le_adv_info);
+          }
+        else { 
+          ble_fill_rxbuf(le_adv_info);
+          }
         break;
 
       case EVT_LE_CONN_COMPLETE: {
@@ -247,14 +259,14 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
           DBG_MIN("peer_bdaddr %s", tmpbuf);
 
           #if 0
-          settings->handle=cc->handle;
+          pSettings->handle=cc->handle;
           set_scanner_sm(CONN_SM_CONNCOMPLETE);
           #else
           char *ver;
           uint8_t features[8];
           struct hci_version version;
           int nRes;
-          nRes=hci_read_remote_version(settings->hci_dev, cc->handle, &version, 5000);
+          nRes=hci_read_remote_version(pSettings->hci_dev, cc->handle, &version, 5000);
           if (nRes == 0) {
               ver = lmp_vertostr(version.lmp_ver);
               printf("LMP Version: %s (0x%x) LMP Subversion: 0x%x\nManufacturer: %s (%d)\n", ver ? ver : "n/a", version.lmp_ver, version.lmp_subver,
@@ -263,7 +275,7 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
               if (ver)
                 bt_free(ver);
             memset(features, 0, sizeof(features));
-            nRes=hci_le_read_remote_features(settings->hci_dev, cc->handle, features, 5000);
+            nRes=hci_le_read_remote_features(pSettings->hci_dev, cc->handle, features, 5000);
             if ( nRes < 0) {
               DBG_MIN("hci_le_read_remote_features fail: nRes %d", nRes);
               }
@@ -335,7 +347,7 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
       case 0:
         DBG_MIN("EVT 0");
         //set_scanner_sm(CONN_SM_CONNCOMPLETE);
-        //tcflush(settings->hci_dev, TCIOFLUSH);
+        //tcflush(pSettings->hci_dev, TCIOFLUSH);
         break;
 
       case EVT_ROLE_CHANGE:
@@ -384,7 +396,7 @@ void AdvAnalyze_new(uint8_t * buf, int nbyte) {
           #if 1
           process_data(le_adv_info->data + current_index + 1, data_len, le_adv_info);
           #else
-          if (settings->map.bit_vars.bScan) { 
+          if (pSettings->map.bit_vars.bScan) { 
             ble_show_rxbuf(le_adv_info);
             }
           else { 
@@ -408,25 +420,29 @@ void AdvAnalyze_new(uint8_t * buf, int nbyte) {
 
 
 void HandleSig(int signo) {
-  if (signo==SIGINT || signo==SIGTERM) { End(); }
-  else { DBG_MIN("unexpected signal: %d exiting anyway", signo); exit(0); }
-}
-
-void End(void) {
-  scanner_parser_end(settings);
-  scanner_connect_end(settings);
-  lu0cfg.Running = FALSE;
-  SLEEPMS(700);
-  // Make sure no characters are left in the input stream as plenty of keys emit ESC sequences, otherwise they'll appear on the command-line after we exit.
-  //while(read(STDIN_FILENO, &ch, 1)==1);
-  // Restore original terminal settings
-  tcsetattr(STDIN_FILENO, TCSANOW, &orig_term);    
+  if (signo==SIGINT || signo==SIGTERM) { 
+	  DBG_MIN("end");
+    End();
+    }
+  else { DBG_MIN("unexpected signal: %d exiting anyway", signo); }
   exit(0);
 }
 
+void End(void) {
+  scanner_parser_end(pSettings);
+  scanner_connect_end(pSettings);
+  lu0cfg.Running = FALSE;
+  DBG_MIN("Running = FALSE");
+  // Make sure no characters are left in the input stream as plenty of keys emit ESC sequences, otherwise they'll appear on the command-line after we exit.
+  //while(read(STDIN_FILENO, &ch, 1)==1);
+  // Restore original terminal settings
+  tcsetattr(STDIN_FILENO, TCSANOW, &orig_term);
+  //return 1;
+}
+
 void BLE_TmoManager() {
-  DBG_MIN(".");
-  tcflush(settings->hci_dev, TCIOFLUSH);
+  DBG_MAX(".");
+  //tcflush(pSettings->hci_dev, TCIOFLUSH);
   //pthread_mutex_lock(&gps_mutex);
   // ADD here
   //pthread_mutex_unlock(&gps_mutex);
@@ -439,70 +455,71 @@ void usage(char * argv[]) {
   printf("\t-?\t\tThis help\n") ;
   printf("\t-t\t\tTest mode\n") ;
   printf("\t-n\t\tRun as daemon\n") ;
-  printf("\t-s\t\tScan mode\n") ;
+  printf("\t-S\t\tScan all ble around\n") ;
+  printf("\t-s\t\tScan configured ble only\n") ;
   exit(0) ;
 }
 
 // *********************************************************************
 CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]) {
-  _Settings *settings = (_Settings *)lucfg->Settings;
+  _Settings *pSettings = (_Settings *)lucfg->Settings;
 
   DBG_MAX("%d %s", argc, argv[1]);
 
   if (argc>1) {
-    settings->HCIDevNumber=atoi(argv[1]);
-    DBG_MIN("HCIDevNumber %d", settings->HCIDevNumber);
+    pSettings->HCIDevNumber=atoi(argv[1]);
+    DBG_MIN("HCIDevNumber %d", pSettings->HCIDevNumber);
     }
   return CMD_EXECUTED_OK;
 }
 
 CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
-  _Settings *settings = (_Settings *)lucfg->Settings;
+  _Settings *pSettings = (_Settings *)lucfg->Settings;
 
   DBG_MAX("%d %s", argc, argv[1]);
 
   if (argc>8) {
-    settings->BDAddressEn[3]=atoi(argv[8]);
-    DBG_MIN("BDAddress[3] %s, enable %d", argv[7], settings->BDAddressEn[3]);
+    pSettings->BDAddressEn[3]=atoi(argv[8]);
+    DBG_MIN("BDAddress[3] %s, enable %d", argv[7], pSettings->BDAddressEn[3]);
     }
   if (argc>7) {
-    str2ba(argv[7], &settings->BDAddress[3] );
+    str2ba(argv[7], &pSettings->BDAddress[3] );
     }
 
   if (argc>6) {
-    settings->BDAddressEn[2]=atoi(argv[6]);
-    DBG_MIN("BDAddress[2] %s, enable %d", argv[5], settings->BDAddressEn[2]);
+    pSettings->BDAddressEn[2]=atoi(argv[6]);
+    DBG_MIN("BDAddress[2] %s, enable %d", argv[5], pSettings->BDAddressEn[2]);
     }
   if (argc>5) {
-    str2ba(argv[5], &settings->BDAddress[2] );
+    str2ba(argv[5], &pSettings->BDAddress[2] );
     }
 
   if (argc>4) {
-    settings->BDAddressEn[1]=atoi(argv[4]);
-    DBG_MIN("BDAddress[1] %s, enable %d", argv[3], settings->BDAddressEn[1]);
+    pSettings->BDAddressEn[1]=atoi(argv[4]);
+    DBG_MIN("BDAddress[1] %s, enable %d", argv[3], pSettings->BDAddressEn[1]);
     }
   if (argc>3) {
-    str2ba(argv[3], &settings->BDAddress[1] );
+    str2ba(argv[3], &pSettings->BDAddress[1] );
     }
 
   if (argc>2) {
-    settings->BDAddressEn[0]=atoi(argv[2]);
-    DBG_MIN("BDAddress[0] %s, enable %d", argv[1], settings->BDAddressEn[0]);
+    pSettings->BDAddressEn[0]=atoi(argv[2]);
+    DBG_MIN("BDAddress[0] %s, enable %d", argv[1], pSettings->BDAddressEn[0]);
     }
   if (argc>1) {
-    str2ba(argv[1], &settings->BDAddress[0] );
+    str2ba(argv[1], &pSettings->BDAddress[0] );
     }
   
   return CMD_EXECUTED_OK;
 }
 
 CMDPARSING_RES doSerialProtocol(_LUCONFIG * lucfg, int argc, char *argv[]) {
-  _Settings *settings = (_Settings *)lucfg->Settings;
+  _Settings *pSettings = (_Settings *)lucfg->Settings;
 
   DBG_MAX("%d %s", argc, argv[1]);
   if (argc>1) {
-    settings->map.bit_vars.protocol=atoi(argv[1]);
-    DBG_MIN("SerialPort 0 protocol = %d", settings->map.bit_vars.protocol);
+    pSettings->map.bit_vars.protocol=atoi(argv[1]);
+    DBG_MIN("SerialPort 0 protocol = %d", pSettings->map.bit_vars.protocol);
     }
 
   return CMD_EXECUTED_OK;

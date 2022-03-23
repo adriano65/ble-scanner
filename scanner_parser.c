@@ -428,7 +428,7 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
                                                              ble_data.luminosity, \
                                                              (float)(ble_data.battery)/10);
       break;
-    case 0x05:                
+    case 0x05:
       pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
       ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       i+=2; // tbd
@@ -440,8 +440,18 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
                                                             (float)(ble_data.battery)/10);
       break;
 
+    case 0x18:
+      pSettings->map.bit_vars.protocol=SERPROT_TECHNOTON;
+      ble_data.pgn=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
+      if (ble_data.pgn!=0xF72D) { for (int n = i+idx; n < i+idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); } break; }
+      ble_data.frequency=(le_adv_inf->data[i+idx+3]<<24) + (le_adv_inf->data[i+idx+2]<<16) + (le_adv_inf->data[i+idx+1]<<8) + le_adv_inf->data[i+idx]; i+=4;
+      ble_data.temperature=le_adv_inf->data[i+idx]-50; i++;
+      printf(", pgn %.04X, freq. %.01f, temp %.01f", ble_data.pgn, (float)ble_data.frequency, (float)ble_data.temperature );
+      break;
+
     default:
       #if 1
+      i=3; 
       for (int n = i+idx; n < i+idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
       #else
       ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;

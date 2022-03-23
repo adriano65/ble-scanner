@@ -53,7 +53,8 @@ void scanner_connect_init(void * param) {
   _Settings *pSettings = (_Settings *)param;
 
   CONNtmo=CONN_TH_WAIT_TMO;
-  CONNsm=CONN_SM_RESETDONGLE;
+  //CONNsm=CONN_SM_RESETDONGLE;
+  CONNsm=CONN_SM_WAIT;  
 	map.bit_vars.b_task=TRUE;
   map.bit_vars.bEnableFrameParsing=FALSE;
 
@@ -64,19 +65,21 @@ void scanner_connect_init(void * param) {
 void *scanner_connectThread(void *param) {
   _Settings *pSettings = (_Settings *)param;  
 	int nTMOCnt=0;
+	char tmpbuf[80];
 
   SLEEPMS(CONNtmo*20);    // waiting sensors filling data...
 	while(map.bit_vars.b_task) {
     SLEEPMS(CONNtmo);
     switch (CONNsm) {
       case CONN_SM_WAIT:
-        if (((nTMOCnt++) % 40) == 0) { DBG_MIN("CONN_SM_WAIT nTMOCnt %d", nTMOCnt); }
+        if (((nTMOCnt++) % 40) == 0) { DBG_MAX("CONN_SM_WAIT nTMOCnt %d", nTMOCnt); }
         break;
 
       case CONN_SM_RESETDONGLE:
-        DBG_MIN("CONN_SM_RESETDONGLE");
         if (pSettings->hci_dev) hci_close_dev(pSettings->hci_dev);
-        system("sudo hciconfig hci0 reset");
+        sprintf(tmpbuf, "hciconfig hci%0d reset", pSettings->HCIDevNumber);
+        DBG_MIN("CONN_SM_RESETDONGLE (%s)", tmpbuf);
+        system(tmpbuf);
         //struct hci_request req;
         //hci_reset_req(&req, NULL);
         //set_bit(HCI_RESET, &req->hdev->flags);
@@ -111,29 +114,27 @@ void *scanner_connectThread(void *param) {
           CONNsm=CONN_SM_WAIT;
           }
         else {
-          CONNsm=CONN_SM_ADDWHITELIST;
+          //CONNsm=CONN_SM_ADDWHITELIST;
+          CONNsm=CONN_SM_TOGGLE_SCAN;          
           }
         break;
 
       case CONN_SM_ADDWHITELIST:
         DBG_MIN("CONN_SM_ADDWHITELIST");
         hci_le_add_white_list(pSettings->hci_dev, &pSettings->BDAddress[3], LE_PUBLIC_ADDRESS, 1000);
-        CONNsm=CONN_SM_WAIT;
+        if (pSettings->map.bit_vars.bScanEn) CONNsm=CONN_SM_TOGGLE_SCAN;
+        else CONNsm=CONN_SM_WAIT;
         break;
 
       case CONN_SM_TOGGLE_SCAN:
-        DBG_MIN("CONN_SM_ENABLE_SCAN");
+        DBG_MIN("CONN_SM_TOGGLE_SCAN (%s)", pSettings->map.bit_vars.bScanEn ? "SCAN_INQUIRY" : "SCAN_DISABLED");
         if (hci_le_set_scan_enable(pSettings->hci_dev,
                                   pSettings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED,
                                   0x00,  /* include dupes */ 
                                   1000) < 0) {
           DBG_MIN("Failed to enable BLE scan: %s (%d)", strerror(errno), errno);
-          CONNsm=CONN_SM_WAIT;
           }
-        else {
-          CONNsm=CONN_SM_WAIT;
-          //CONNsm=CONN_SM_ENABLE_SCAN;
-          }
+        CONNsm=CONN_SM_WAIT;
         break;
 
       case CONN_SM_CREATECONN:

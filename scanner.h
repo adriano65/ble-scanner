@@ -14,6 +14,7 @@ typedef enum _SERIAL_PROTO {
 	SERPROT_DSM_TEST = 3,
 	SERPROT_ESCORT = 4,
 	SERPROT_TELTONIKA = 5,
+	SERPROT_TECHNOTON = 6,
 } SERIAL_PROTO;
 
 typedef struct _ble_dat {
@@ -22,6 +23,8 @@ typedef struct _ble_dat {
   uint16_t temperature;
   uint16_t humidity;
   uint16_t luminosity;
+  uint16_t pgn;
+  uint32_t frequency;
 
   uint8_t battery;
 
