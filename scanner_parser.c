@@ -400,9 +400,9 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
       ble_data.sensorDataID[0]=le_adv_inf->data[idx+1];
       ble_data.sensorDataID[1]=le_adv_inf->data[idx+2];
       ble_data.companyID=(ble_data.sensorDataID[1]<<8) + ble_data.sensorDataID[0];
-      printf("Company identifier 0x%04X", ble_data.companyID);
-      ble_data.sensorDataID[2]=le_adv_inf->data[idx+3];
-      decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(idx, sublen);
+      printf("Company identifier 0x%04X\n", ble_data.companyID);
+      if (le_adv_inf->bdaddr.b[5]==0x90) decode_WNOSE(idx, sublen);
+      else decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(idx, sublen);
       break;
       
     default:
@@ -417,6 +417,7 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
   unsigned char i=4;
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
 
+  ble_data.sensorDataID[2]=le_adv_inf->data[idx+3];
   switch (ble_data.sensorDataID[2]) {
     case 0x03:         // 0x160F03
       pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
@@ -467,5 +468,27 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
       #endif
       break;
     }
+}
+
+void decode_WNOSE(unsigned char idx, unsigned char sublen) {
+  #define FLAGS_LEN 3
+  int i=idx+FLAGS_LEN;
+
+  printf("deltaT %d, UVCLamp %d, temp. %d humi %d, IOState %02X, lineLevel %d, FW %02X\nHours %d, Min %d, sec %d\n", le_adv_inf->data[i], \
+                                                          le_adv_inf->data[i+1], \
+                                                          le_adv_inf->data[i+2], \
+                                                          le_adv_inf->data[i+3], \
+                                                          le_adv_inf->data[i+4], \
+                                                          le_adv_inf->data[i+5], \
+                                                          le_adv_inf->data[i+6], \
+                                                          le_adv_inf->data[i+7], \
+                                                          le_adv_inf->data[i+8], \
+                                                          le_adv_inf->data[i+9]);
+  #if 1
+  for (int n = i; n < i+sublen-FLAGS_LEN; n++) { printf(" %02d", n); }
+  printf("\n");
+  for (int n = i; n < i+sublen-FLAGS_LEN; n++) { printf(" %02d", (unsigned char)le_adv_inf->data[n]); }
+  printf("\n");
+  #endif
 }
 

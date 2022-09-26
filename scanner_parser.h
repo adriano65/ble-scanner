@@ -134,6 +134,8 @@ void process_data(uint8_t *data, size_t data_len, le_advertising_info *info);
 
 bool GAP_Assigned_numbers(unsigned char idx, unsigned char gap_an);
 void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char sublen);
+void decode_WNOSE(unsigned char idx, unsigned char sublen);
+
 
 #endif
 

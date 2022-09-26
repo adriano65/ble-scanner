@@ -123,23 +123,40 @@ int main(int argc, char *argv[]) {
 
 
   #if 1
-  struct hci_filter of;
-  socklen_t olen = sizeof(of);
+  struct hci_filter orig_filter;
+  socklen_t orig_len = sizeof(orig_filter);
 
   if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
     DBG_MIN("Failed hci_open_dev %s (%d)\n", strerror(errno), errno);
     }
-  if (getsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
+  if (getsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &orig_filter, &orig_len) < 0) {
     DBG_MIN("Failed to save original HCI filter %s (%d)\n", strerror(errno), errno);
     return -1;
     }
-  struct hci_filter nf;
-  hci_filter_clear(&nf);
-  hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
-  hci_filter_set_event(EVT_LE_META_EVENT, &nf);
+  struct hci_filter new_filter;
+  hci_filter_clear(&new_filter);
+  hci_filter_set_ptype(HCI_EVENT_PKT, &new_filter);
+  hci_filter_set_event(EVT_LE_META_EVENT, &new_filter);
   // set new filter to capture all LE events
-  if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
+  if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &new_filter, sizeof(new_filter)) < 0) {
     fprintf(stderr, "Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
+    return -1;
+    }
+  #else
+  struct hci_filter new_filter;
+
+  //cmd_opcode_pack()
+  hci_filter_clear(&new_filter);
+  hci_filter_all_events(&new_filter);
+  hci_filter_set_ptype(HCI_EVENT_PKT, &new_filter);
+
+  //hci_filter_set_event(EVT_LE_META_EVENT, &new_filter);
+  hci_filter_set_event(EVT_LE_ADVERTISING_REPORT, &new_filter);  
+  if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
+    DBG_MIN("Failed hci_open_dev %s (%d)\n", strerror(errno), errno);
+    }
+  if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &new_filter, sizeof(new_filter)) < 0) {
+    fprintf(stderr, "Failed to set filter to capture LE events %s (%d)\n", strerror(errno), errno);
     return -1;
     }
   #endif
@@ -174,6 +191,7 @@ int main(int argc, char *argv[]) {
             DBG_MAX("ble activity");
             if ((nbyte = read(pSettings->hci_dev, buf, sizeof(buf)))>0) {
               AdvAnalyze(buf, nbyte);
+
               }
             else {DBG_MAX("nbyte %d", nbyte);}
             }
@@ -181,6 +199,11 @@ int main(int argc, char *argv[]) {
     int len = read(STDIN_FILENO, &ch, 1);
     if (len == 1) { 
       switch (ch) {
+        case 'a':
+          printf("Request adv data...\n");
+          set_scanner_sm(CONN_SM_GET_ADV_DATA);
+          break;  
+
         case 'c':
           printf("Connecting...\n");
           set_scanner_sm(CONN_SM_CREATECONN);
@@ -204,6 +227,7 @@ int main(int argc, char *argv[]) {
 
         case '?':
           printf("press single key for:\n");
+          printf("a - adv data\n");
           printf("c - connect\n");
           printf("q - quit\n");
           printf("r - reset bt adapter\n");
@@ -243,12 +267,17 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
           }
         break;
 
+      case EVT_LE_CONN_UPDATE_COMPLETE:
+        //evt_le_connection_update_complete *cc = (void *)meta_event->data;
+        DBG_MIN("EVT_LE_CONN_UPDATE_COMPLETE");        
+        break;
+
       case EVT_LE_CONN_COMPLETE: {
         DBG_MIN("EVT_LE_CONN_COMPLETE");
         evt_le_connection_complete *cc = (void *)meta_event->data;
         /* Connection parameters:
         cc->status: connection status (0x00: Connection successfully completed); 
-        cc->handle: connection handle to be used for the communication during the  connection;
+        cc->handle: connection handle to be used for the communication during the connection;
         */
         if (cc->status) {
           DBG_MIN("set_scanner_sm(CONN_SM_CONNFAILED)");
@@ -257,38 +286,8 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
         else {
           ba2str(&cc->peer_bdaddr, tmpbuf);
           DBG_MIN("peer_bdaddr %s", tmpbuf);
-
-          #if 0
           pSettings->handle=cc->handle;
           set_scanner_sm(CONN_SM_CONNCOMPLETE);
-          #else
-          char *ver;
-          uint8_t features[8];
-          struct hci_version version;
-          int nRes;
-          nRes=hci_read_remote_version(pSettings->hci_dev, cc->handle, &version, 5000);
-          if (nRes == 0) {
-              ver = lmp_vertostr(version.lmp_ver);
-              printf("LMP Version: %s (0x%x) LMP Subversion: 0x%x\nManufacturer: %s (%d)\n", ver ? ver : "n/a", version.lmp_ver, version.lmp_subver,
-                bt_compidtostr(version.manufacturer),
-                version.manufacturer);
-              if (ver)
-                bt_free(ver);
-            memset(features, 0, sizeof(features));
-            nRes=hci_le_read_remote_features(pSettings->hci_dev, cc->handle, features, 5000);
-            if ( nRes < 0) {
-              DBG_MIN("hci_le_read_remote_features fail: nRes %d", nRes);
-              }
-            else {
-              printf("Features: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n", features[0], features[1], features[2], features[3], features[4], features[5], features[6], features[7]);
-              usleep(10000);
-              }
-            }
-          else {
-            DBG_MIN("Can't read_remote_version nRes, %d %s %d", nRes, strerror(errno), errno); 
-            }
-          set_scanner_sm(CONN_SM_DISCONN);
-          #endif
           }
         }
         break;

@@ -137,6 +137,13 @@ void *scanner_connectThread(void *param) {
         CONNsm=CONN_SM_WAIT;
         break;
 
+      case CONN_SM_GET_ADV_DATA:
+        DBG_MIN("CONN_SM_GET_ADV_DATA");
+        //hci_send_cmd(pSettings->hci_dev, )
+        CONNsm=CONN_SM_WAIT;
+        break;
+
+
       case CONN_SM_CREATECONN:
         DBG_MIN("CONN_SM_CREATECONN");
         if (pSettings->createConnTent) { 
@@ -314,6 +321,7 @@ void *readRemoteVer_Th(void *param) {
       }
     }
   set_scanner_sm(CONN_SM_DISCONN);
+  SLEEPMS(1500);
   pthread_exit(NULL) ;        // terminate thread
   return(NULL);
 }
