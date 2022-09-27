@@ -8,14 +8,25 @@
 #define SUBSREL 0x03    // Software subrelease
 
 typedef enum _SERIAL_PROTO {
-	SERPROT_RK03Y = 0,
-	SERPROT_WAYO3 = 1,
-	SERPROT_DSM = 2,
-	SERPROT_DSM_TEST = 3,
-	SERPROT_ESCORT = 4,
-	SERPROT_TELTONIKA = 5,
-	SERPROT_TECHNOTON = 6,
+	SERPROT_DISABLED = 0,
+	SERPROT_RK03Y,
+	SERPROT_WAYO3,
+	SERPROT_DSM,
+	SERPROT_DSM_TEST,
+	SERPROT_ESCORT = 5,
+	SERPROT_TELTONIKA,
+	SERPROT_TECHNOTON,
+	SERPROT_WAYNOSE_1,
+	SERPROT_MAX = 16,
 } SERIAL_PROTO;
+
+typedef enum {
+    LOG_NOTHING,
+    LOG_DATAONLY,
+    LOG_DATA_AND_HEADER,
+    LOG_DATA_EXT_DATAONLY,
+} _LOGTYPE;
+
 
 typedef struct _ble_dat {
   uint16_t companyID;
@@ -25,7 +36,6 @@ typedef struct _ble_dat {
   uint16_t luminosity;
   uint16_t pgn;
   uint32_t frequency;
-
   uint8_t battery;
 
 } _ble_data;
@@ -34,8 +44,8 @@ struct _serprot_bits {
         uint8_t bScanMode  : 1;
         uint8_t bTestMode  : 1;
         uint8_t bScanEn  : 1;
-        SERIAL_PROTO protocol  : 3;
-        uint8_t spare  : 2;
+        uint8_t bleIdx  : 3;
+        _LOGTYPE loglevel  : 2;
 };
 
 union _serprot_map {
@@ -46,7 +56,7 @@ union _serprot_map {
 typedef struct __Settings {
   unsigned int HCIDevNumber;
   bdaddr_t BDAddress[4];
-  int BDAddressEn[4];
+  SERIAL_PROTO proto[4];
   int hci_dev;
   uint16_t handle;
   _ble_data *ble_data;
@@ -68,7 +78,6 @@ void AdvAnalyze(uint8_t * buf, int nbyte);
 void AdvAnalyze_new(uint8_t * buf, int nbyte);
 
 CMDPARSING_RES doHCIDevNumber(_LUCONFIG * lucfg, int argc, char *argv[]);
-CMDPARSING_RES doSerialProtocol(_LUCONFIG * lucfg, int argc, char *argv[]);
 CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]);
 CMDPARSING_RES doLogFileName(_LUCONFIG * lucfg, int argc, char *argv[]);
 

@@ -95,7 +95,8 @@ void *scanner_connectThread(void *param) {
           CONNsm=CONN_SM_WAIT;
           } 
         else {
-          hci_le_set_scan_enable(pSettings->hci_dev, SCAN_DISABLED, 0, 10000); // disable in case already enabled
+          DBG_MIN("hci_le_set_scan_enable %d", pSettings->map.bit_vars.bScanEn);
+          hci_le_set_scan_enable(pSettings->hci_dev, pSettings->map.bit_vars.bScanEn, 0, 1000); // disable in case already enabled
           CONNsm=CONN_SM_SETSCANPARAM;
           }
         break;
@@ -132,7 +133,7 @@ void *scanner_connectThread(void *param) {
                                   pSettings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED,
                                   0x00,  /* include dupes */ 
                                   1000) < 0) {
-          DBG_MIN("Failed to enable BLE scan: %s (%d)", strerror(errno), errno);
+          DBG_MIN("Failed to change BLE scan: %s (%d), bScanEn %d", strerror(errno), errno, pSettings->map.bit_vars.bScanEn);
           }
         CONNsm=CONN_SM_WAIT;
         break;

@@ -238,12 +238,24 @@ int ble_show_rxbuf(le_advertising_info * le_adv_info) {
 
 int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
+  char addr[18];
 
   DBG_MAX(".");
-  if ( (pSettings->BDAddressEn[0] && !memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[0], sizeof(bdaddr_t))) || 
-       (pSettings->BDAddressEn[1] && !memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[1], sizeof(bdaddr_t))) || 
-       (pSettings->BDAddressEn[2] && !memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[2], sizeof(bdaddr_t))) || 
-       (pSettings->BDAddressEn[3] && !memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[3], sizeof(bdaddr_t))) ) {
+  for (pSettings->map.bit_vars.bleIdx=0; pSettings->map.bit_vars.bleIdx < 4; pSettings->map.bit_vars.bleIdx++) {
+    #if 0
+    ba2str(&(le_adv_info->bdaddr), addr);
+    DBG_MIN("le_adv_info->bdaddr %s", addr);
+    ba2str(&pSettings->BDAddress[pSettings->map.bit_vars.bleIdx], addr);
+    DBG_MIN("BDAddress %s", addr);
+    #endif
+
+    if ( (pSettings->proto[pSettings->map.bit_vars.bleIdx] && !memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[pSettings->map.bit_vars.bleIdx], sizeof(bdaddr_t)))) {
+      DBG_MAX("pSettings->proto[pSettings->map.bit_vars.bleIdx] %d, mem %d", pSettings->proto[pSettings->map.bit_vars.bleIdx], memcmp(&(le_adv_info->bdaddr), &pSettings->BDAddress[pSettings->map.bit_vars.bleIdx], sizeof(bdaddr_t)));
+      break;
+      }
+    }
+
+  if ( pSettings->map.bit_vars.bleIdx < 4 ) {
     #if 0
     char addr[18];
     ba2str(&(le_adv_info->bdaddr), addr);
@@ -261,6 +273,7 @@ int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
     #endif
     return TRUE;
     }
+  else {DBG_MAX("pSettings->map.bit_vars.bleIdx %d", pSettings->map.bit_vars.bleIdx);}
   return FALSE;
 }
 
@@ -282,13 +295,13 @@ SC_PARSEBUFFER scanner_frame_parser() {
   ba2str(&le_adv_inf->bdaddr, tmpBDaddr);
   
   DBG_MAX("n %d, frame 0x%02X, le_adv_inf->length %d", n, le_adv_inf->data[n], le_adv_inf->length);
-  printf("%02d:%02d:%02d -> MAC %s, RSSI %d\n", actual->tm_hour, actual->tm_min, actual->tm_sec, tmpBDaddr, (int8_t)le_adv_inf->data[le_adv_inf->length]);
+  if (pSettings->map.bit_vars.bTestMode) printf("%02d:%02d:%02d -> MAC %s, RSSI %d\n", actual->tm_hour, actual->tm_min, actual->tm_sec, tmpBDaddr, (int8_t)le_adv_inf->data[le_adv_inf->length]);
   while ( idx<le_adv_inf->length ) {
     sublen=le_adv_inf->data[idx++];
     i=0;
     frameCnt++;
     //printf("frame %d, len %d, data 0x%02X-> ", frameCnt, sublen, (unsigned char)le_adv_inf->data[idx-1]);
-    printf("frame %d, len %d -> ", frameCnt, sublen);
+    if (pSettings->map.bit_vars.bTestMode) printf("frame %d, len %d -> ", frameCnt, sublen);
     while (i<sublen) {
       switch (frameCnt) {
         case 1:
@@ -316,7 +329,7 @@ SC_PARSEBUFFER scanner_frame_parser() {
             }
           else {
 
-              if (pSettings->map.bit_vars.protocol==SERPROT_ESCORT) {
+              if (pSettings->proto[3]==SERPROT_ESCORT) {
                 printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
                 }
               else {
@@ -333,9 +346,9 @@ SC_PARSEBUFFER scanner_frame_parser() {
       i++;
       }
     idx+=sublen;
-    printf("\n");
+    if (pSettings->map.bit_vars.bTestMode) printf("\n");
     }
-  printf("\n");
+  if (pSettings->map.bit_vars.bTestMode) printf("\n");
 	return nRet;
 }
 
@@ -378,10 +391,11 @@ void process_data(uint8_t *data, size_t data_len, le_advertising_info *info) {
 }
 
 bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
+  _Settings *pSettings = (_Settings *)lu0cfg.Settings;
   bool bRet=TRUE;
   switch (le_adv_inf->data[idx]) {
     case 0x01:
-      printf("Flags 0x%02X", (unsigned char)le_adv_inf->data[idx+1]);
+      if (pSettings->map.bit_vars.bTestMode) printf("Flags 0x%02X", (unsigned char)le_adv_inf->data[idx+1]);
       break;
 
     case 0x03:
@@ -393,16 +407,31 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
       break;
 
     case 0x09:
-      printf("Complete Dev name "); for (int i=1; i<sublen; i++) printf("%c", (unsigned char)le_adv_inf->data[idx+i]);
+      if (pSettings->map.bit_vars.bTestMode) {printf("Complete Dev name "); for (int i=1; i<sublen; i++) printf("%c", (unsigned char)le_adv_inf->data[idx+i]);}
       break;
 
     case 0xFF:
       ble_data.sensorDataID[0]=le_adv_inf->data[idx+1];
       ble_data.sensorDataID[1]=le_adv_inf->data[idx+2];
       ble_data.companyID=(ble_data.sensorDataID[1]<<8) + ble_data.sensorDataID[0];
-      printf("Company identifier 0x%04X\n", ble_data.companyID);
-      if (le_adv_inf->bdaddr.b[5]==0x90) decode_WNOSE(idx, sublen);
-      else decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(idx, sublen);
+      
+      switch (pSettings->proto[pSettings->map.bit_vars.bleIdx]) {
+        case SERPROT_DSM:
+          decode_WNOSE(idx, sublen);    // FIX ME!!
+          break;
+        
+        case SERPROT_ESCORT:
+          decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(idx, sublen);
+          break;
+        
+        case SERPROT_WAYNOSE_1:
+          decode_WNOSE(idx, sublen);
+          break;
+        
+        default:
+          DBG_MIN("unexpected %d", pSettings->proto[pSettings->map.bit_vars.bleIdx]);
+          break;
+        }
       break;
       
     default:
@@ -415,12 +444,11 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
 
 void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char sublen) {
   unsigned char i=4;
-  _Settings *pSettings = (_Settings *)lu0cfg.Settings;
 
+  printf("Company identifier 0x%04X\n", ble_data.companyID);
   ble_data.sensorDataID[2]=le_adv_inf->data[idx+3];
   switch (ble_data.sensorDataID[2]) {
     case 0x03:         // 0x160F03
-      pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
       ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       ble_data.luminosity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       ble_data.battery=le_adv_inf->data[i+idx];
@@ -430,7 +458,6 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
                                                              (float)(ble_data.battery)/10);
       break;
     case 0x05:
-      pSettings->map.bit_vars.protocol=SERPROT_ESCORT;
       ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       i+=2; // tbd
       ble_data.humidity=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
@@ -442,7 +469,6 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
       break;
 
     case 0x18:
-      pSettings->map.bit_vars.protocol=SERPROT_TECHNOTON;
       ble_data.pgn=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       if (ble_data.pgn!=0xF72D) { for (int n = i+idx; n < i+idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); } break; }
       ble_data.frequency=(le_adv_inf->data[i+idx+3]<<24) + (le_adv_inf->data[i+idx+2]<<16) + (le_adv_inf->data[i+idx+1]<<8) + le_adv_inf->data[i+idx]; i+=4;
@@ -454,6 +480,7 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
       #if 1
       i=3; 
       for (int n = i+idx; n < i+idx+sublen-4; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
+      printf("\n");
       #else
       ble_data.temperature=le_adv_inf->data[i+idx]+(le_adv_inf->data[i+idx+1]<<8); i+=2;
       i+=2; // tbd
@@ -472,9 +499,11 @@ void decode_GAP_ADTYPE_MANUFACTURER_SPECIFIC(unsigned char idx, unsigned char su
 
 void decode_WNOSE(unsigned char idx, unsigned char sublen) {
   #define FLAGS_LEN 3
+  _Settings *pSettings = (_Settings *)lu0cfg.Settings;
   int i=idx+FLAGS_LEN;
 
-  printf("deltaT %d, UVCLamp %d, temp. %d humi %d, IOState %02X, lineLevel %d, FW %02X\nHours %d, Min %d, sec %d\n", le_adv_inf->data[i], \
+  if (pSettings->map.bit_vars.loglevel == LOG_DATA_AND_HEADER) printf("FW\tdTemp\tUVCLamp\ttemp\thumi\tIOStat\tlineLev\tHours\tMin\tsec\n");
+  if (pSettings->map.bit_vars.loglevel > LOG_NOTHING) printf("%02X\t%d\t%d\t%d\t%d\t%02X\t%d\t%d\t%d\t%d\n", le_adv_inf->data[i], \
                                                           le_adv_inf->data[i+1], \
                                                           le_adv_inf->data[i+2], \
                                                           le_adv_inf->data[i+3], \
@@ -484,7 +513,7 @@ void decode_WNOSE(unsigned char idx, unsigned char sublen) {
                                                           le_adv_inf->data[i+7], \
                                                           le_adv_inf->data[i+8], \
                                                           le_adv_inf->data[i+9]);
-  #if 1
+  #if 0
   for (int n = i; n < i+sublen-FLAGS_LEN; n++) { printf(" %02d", n); }
   printf("\n");
   for (int n = i; n < i+sublen-FLAGS_LEN; n++) { printf(" %02d", (unsigned char)le_adv_inf->data[n]); }

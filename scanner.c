@@ -41,7 +41,6 @@ static struct termios orig_term, raw_term;
 
 struct CMDS Lu0cmds[] = {
     {"HCIDevNumber",            doHCIDevNumber, },
-    {"SerialProtocol",	        doSerialProtocol, },    
     {"BDAddresses",             doBDAddresses, },
     {"LogFileName",	 	          doLogFileName, },
     {"",        		            donull, },
@@ -76,6 +75,7 @@ int main(int argc, char *argv[]) {
   pSettings->map.bit_vars.bScanMode=FALSE;
   pSettings->map.bit_vars.bTestMode=FALSE;
   pSettings->map.bit_vars.bScanEn=FALSE;
+  pSettings->map.bit_vars.loglevel=LOG_DATA_AND_HEADER;
 
   while ((opt = getopt(argc, argv, "?thnsS")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
@@ -121,14 +121,32 @@ int main(int argc, char *argv[]) {
   scanner_connect_init(pSettings);
   lu0cfg.Running = TRUE;
 
-
-  #if 1
   struct hci_filter orig_filter;
   socklen_t orig_len = sizeof(orig_filter);
 
   if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
     DBG_MIN("Failed hci_open_dev %s (%d)\n", strerror(errno), errno);
     }
+  #if 0
+  struct hci_dev_info di;
+  if (ioctl(pSettings->hci_dev, HCIGETDEVINFO, (void *) &di) < 0) {
+    perror("Failed to get HCI device info");
+    close(pSettings->hci_dev);
+    return -1;
+    }
+  if (!hci_test_bit(HCI_UP, &di.flags)) {
+      if (ioctl(pSettings->hci_dev, HCIDEVUP, pSettings->hci_dev) < 0) {
+        if (errno != EALREADY) {
+          perror("Failed to bring up HCI device");
+          close(pSettings->hci_dev);
+          return -1;
+        }
+      }
+    }
+  #endif
+
+
+  #if 1  
   if (getsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &orig_filter, &orig_len) < 0) {
     DBG_MIN("Failed to save original HCI filter %s (%d)\n", strerror(errno), errno);
     return -1;
@@ -137,6 +155,7 @@ int main(int argc, char *argv[]) {
   hci_filter_clear(&new_filter);
   hci_filter_set_ptype(HCI_EVENT_PKT, &new_filter);
   hci_filter_set_event(EVT_LE_META_EVENT, &new_filter);
+  hci_le_set_scan_enable(pSettings->hci_dev, pSettings->map.bit_vars.bScanEn, 0, 500);
   // set new filter to capture all LE events
   if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &new_filter, sizeof(new_filter)) < 0) {
     fprintf(stderr, "Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
@@ -152,9 +171,6 @@ int main(int argc, char *argv[]) {
 
   //hci_filter_set_event(EVT_LE_META_EVENT, &new_filter);
   hci_filter_set_event(EVT_LE_ADVERTISING_REPORT, &new_filter);  
-  if ((pSettings->hci_dev = hci_open_dev(pSettings->HCIDevNumber)) < 0 ) {  // Get HCI device.
-    DBG_MIN("Failed hci_open_dev %s (%d)\n", strerror(errno), errno);
-    }
   if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &new_filter, sizeof(new_filter)) < 0) {
     fprintf(stderr, "Failed to set filter to capture LE events %s (%d)\n", strerror(errno), errno);
     return -1;
@@ -209,6 +225,11 @@ int main(int argc, char *argv[]) {
           set_scanner_sm(CONN_SM_CREATECONN);
           break;
 
+        case 'l':
+          pSettings->map.bit_vars.loglevel=(pSettings->map.bit_vars.loglevel > 4) ? 0 : pSettings->map.bit_vars.loglevel+1;
+          printf("log level %d\n", pSettings->map.bit_vars.loglevel);
+          break;
+
         case 'q':
           printf("quitting...\n");
           End();
@@ -229,6 +250,7 @@ int main(int argc, char *argv[]) {
           printf("press single key for:\n");
           printf("a - adv data\n");
           printf("c - connect\n");
+          printf("l - log level %d\n", pSettings->map.bit_vars.loglevel);
           printf("q - quit\n");
           printf("r - reset bt adapter\n");
           printf("x - disable/enable scan\n");
@@ -441,7 +463,7 @@ void End(void) {
 
 void BLE_TmoManager() {
   DBG_MAX(".");
-  //tcflush(pSettings->hci_dev, TCIOFLUSH);
+  tcflush(pSettings->hci_dev, TCIOFLUSH);
   //pthread_mutex_lock(&gps_mutex);
   // ADD here
   //pthread_mutex_unlock(&gps_mutex);
@@ -478,49 +500,37 @@ CMDPARSING_RES doBDAddresses(_LUCONFIG * lucfg, int argc, char *argv[]) {
   DBG_MAX("%d %s", argc, argv[1]);
 
   if (argc>8) {
-    pSettings->BDAddressEn[3]=atoi(argv[8]);
-    DBG_MIN("BDAddress[3] %s, enable %d", argv[7], pSettings->BDAddressEn[3]);
+    pSettings->proto[3]=atoi(argv[8]);
     }
   if (argc>7) {
     str2ba(argv[7], &pSettings->BDAddress[3] );
+    DBG_MIN("BDAddress[3] %s, proto[3] %d", argv[7], pSettings->proto[3]);
     }
 
   if (argc>6) {
-    pSettings->BDAddressEn[2]=atoi(argv[6]);
-    DBG_MIN("BDAddress[2] %s, enable %d", argv[5], pSettings->BDAddressEn[2]);
+    pSettings->proto[2]=atoi(argv[6]);
+    DBG_MIN("proto[2] %d", pSettings->proto[2]);
     }
   if (argc>5) {
     str2ba(argv[5], &pSettings->BDAddress[2] );
     }
 
   if (argc>4) {
-    pSettings->BDAddressEn[1]=atoi(argv[4]);
-    DBG_MIN("BDAddress[1] %s, enable %d", argv[3], pSettings->BDAddressEn[1]);
+    pSettings->proto[1]=atoi(argv[4]);
+    DBG_MIN("proto[1] %d", pSettings->proto[1]);
     }
   if (argc>3) {
     str2ba(argv[3], &pSettings->BDAddress[1] );
     }
 
   if (argc>2) {
-    pSettings->BDAddressEn[0]=atoi(argv[2]);
-    DBG_MIN("BDAddress[0] %s, enable %d", argv[1], pSettings->BDAddressEn[0]);
+    pSettings->proto[0]=atoi(argv[2]);
+    DBG_MIN("proto[0] %d", pSettings->proto[0]);
     }
   if (argc>1) {
     str2ba(argv[1], &pSettings->BDAddress[0] );
     }
   
-  return CMD_EXECUTED_OK;
-}
-
-CMDPARSING_RES doSerialProtocol(_LUCONFIG * lucfg, int argc, char *argv[]) {
-  _Settings *pSettings = (_Settings *)lucfg->Settings;
-
-  DBG_MAX("%d %s", argc, argv[1]);
-  if (argc>1) {
-    pSettings->map.bit_vars.protocol=atoi(argv[1]);
-    DBG_MIN("SerialPort 0 protocol = %d", pSettings->map.bit_vars.protocol);
-    }
-
   return CMD_EXECUTED_OK;
 }
 
