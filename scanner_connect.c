@@ -51,12 +51,16 @@ static union _conn_map map;
 
 void scanner_connect_init(void * param) {
   _Settings *pSettings = (_Settings *)param;
+	char tmpbuf[80];
 
   CONNtmo=CONN_TH_WAIT_TMO;
   //CONNsm=CONN_SM_RESETDONGLE;
   CONNsm=CONN_SM_WAIT;  
 	map.bit_vars.b_task=TRUE;
   map.bit_vars.bEnableFrameParsing=FALSE;
+  sprintf(tmpbuf, "hciconfig hci%0d up", pSettings->HCIDevNumber);
+  system(tmpbuf);
+  DBG_MIN("DONGLE (%s)", tmpbuf);
 
   le_adv_inf=(le_advertising_info *)malloc(sizeof(le_advertising_info)+128);
   if( pthread_create(&smThread, NULL, scanner_connectThread, (void *)pSettings) != 0) { DBG_MIN("pthread_create error");} 
@@ -139,7 +143,7 @@ void *scanner_connectThread(void *param) {
         break;
 
       case CONN_SM_GET_ADV_DATA:
-        DBG_MIN("CONN_SM_GET_ADV_DATA");
+        DBG_MIN("CONN_SM_GET_ADV_DATA Not Implemented yet");
         //hci_send_cmd(pSettings->hci_dev, )
         CONNsm=CONN_SM_WAIT;
         break;

@@ -38,6 +38,7 @@ _LUCONFIG lu0cfg;
 _ble_data ble_data;
 static _Settings *pSettings;
 static struct termios orig_term, raw_term;
+static pthread_mutex_t s_mutex;
 
 struct CMDS Lu0cmds[] = {
     {"HCIDevNumber",            doHCIDevNumber, },
@@ -155,10 +156,20 @@ int main(int argc, char *argv[]) {
   hci_filter_clear(&new_filter);
   hci_filter_set_ptype(HCI_EVENT_PKT, &new_filter);
   hci_filter_set_event(EVT_LE_META_EVENT, &new_filter);
-  hci_le_set_scan_enable(pSettings->hci_dev, pSettings->map.bit_vars.bScanEn, 0, 500);
+  if (hci_le_set_scan_parameters(pSettings->hci_dev,
+                                0x01, /* 0x00 passive,  */
+                                htobs(0x10), 
+                                htobs(0x10), 
+                                LE_PUBLIC_ADDRESS, 
+                                0x00, /* filter_policy = 0x01; --> Whitelist */
+                                1000) < 0) {
+    DBG_MIN("Failed hci_le_set_scan_parameters %s (%d)\n", strerror(errno), errno);
+    }
+
+  hci_le_set_scan_enable(pSettings->hci_dev, pSettings->map.bit_vars.bScanEn ? SCAN_INQUIRY : SCAN_DISABLED, 0, 500);
   // set new filter to capture all LE events
   if (setsockopt(pSettings->hci_dev, SOL_HCI, HCI_FILTER, &new_filter, sizeof(new_filter)) < 0) {
-    fprintf(stderr, "Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
+    DBG_MIN("Failed to set new filter to capture all LE events %s (%d)\n", strerror(errno), errno);
     return -1;
     }
   #else
@@ -241,6 +252,13 @@ int main(int argc, char *argv[]) {
           set_scanner_sm(CONN_SM_RESETDONGLE);
           break;
 
+        case 't':
+          pSettings->map.bit_vars.bTestMode=pSettings->map.bit_vars.bTestMode ? 0 : 1;
+          printf("Test Mode %d\n", pSettings->map.bit_vars.bTestMode);
+          break;
+
+
+
         case 'x':
           pSettings->map.bit_vars.bScanEn=pSettings->map.bit_vars.bScanEn ? FALSE : TRUE;
           set_scanner_sm(CONN_SM_TOGGLE_SCAN);
@@ -253,6 +271,7 @@ int main(int argc, char *argv[]) {
           printf("l - log level %d\n", pSettings->map.bit_vars.loglevel);
           printf("q - quit\n");
           printf("r - reset bt adapter\n");
+          printf("t - Test Mode %d\n", pSettings->map.bit_vars.bTestMode);
           printf("x - disable/enable scan\n");
           break;
 
@@ -280,13 +299,19 @@ void AdvAnalyze(uint8_t * buf, int nbyte) {
 
     switch (meta_event->subevent) {
       case EVT_LE_ADVERTISING_REPORT:
+        //pthread_mutex_lock(&s_mutex);
+        hci_le_set_scan_enable(pSettings->hci_dev, SCAN_DISABLED, 0, 800);
+
         le_adv_info = (le_advertising_info *)(meta_event->data + 1);
         if (pSettings->map.bit_vars.bScanMode) { 
           ble_show_rxbuf(le_adv_info);
           }
-        else { 
+        else {
           ble_fill_rxbuf(le_adv_info);
           }
+
+        hci_le_set_scan_enable(pSettings->hci_dev, SCAN_INQUIRY, 0, 800);
+        //pthread_mutex_unlock(&s_mutex);
         break;
 
       case EVT_LE_CONN_UPDATE_COMPLETE:
@@ -463,7 +488,7 @@ void End(void) {
 
 void BLE_TmoManager() {
   DBG_MAX(".");
-  tcflush(pSettings->hci_dev, TCIOFLUSH);
+  //tcflush(pSettings->hci_dev, TCIOFLUSH);
   //pthread_mutex_lock(&gps_mutex);
   // ADD here
   //pthread_mutex_unlock(&gps_mutex);

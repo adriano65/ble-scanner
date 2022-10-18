@@ -6,10 +6,12 @@
 	],
 	"settings": {
 		"files.associations": {
-			"hash_map": "c",
-			"bitset": "c",
-			"chrono": "c",
-			"algorithm": "c"
-		}
+      "hash_map": "c",
+      "bitset": "c",
+      "chrono": "c",
+      "algorithm": "c",
+      "mutex": "c",
+      "__mutex_base": "c"
+    }
 	}
 }

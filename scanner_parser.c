@@ -286,8 +286,8 @@ SC_PARSEBUFFER scanner_frame_parser() {
 	struct tm * actual;
 
   if (pSettings->map.bit_vars.bTestMode) {
-    printf("len %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
-    printf("\n\n");
+    printf("\nlen %d -> ", le_adv_inf->length); for (int n = 0; n < le_adv_inf->length; n++) { printf(" %02X", (unsigned char)le_adv_inf->data[n]); }
+    printf("\n");
     }
 
 	time(&timenow) ;       // time since 1970
@@ -328,15 +328,12 @@ SC_PARSEBUFFER scanner_frame_parser() {
             i=sublen;
             }
           else {
-
-              if (pSettings->proto[3]==SERPROT_ESCORT) {
-                printf("%c", (unsigned char)le_adv_inf->data[i+idx]);
-                }
-              else {
                 printf(" %02X", (unsigned char)le_adv_inf->data[i+idx]);
                 }
+          break;
 
-            }
+        case 4:
+          printf(" FRAAAMEEE!\n");
           break;
 
         default:
@@ -352,43 +349,6 @@ SC_PARSEBUFFER scanner_frame_parser() {
 	return nRet;
 }
 
-
-void process_data(uint8_t *data, size_t data_len, le_advertising_info *info) {
-  printf("Test: %p and %ld\n", data, data_len);
-  if(data[0] == EIR_NAME_SHORT || data[0] == EIR_NAME_COMPLETE) {
-    size_t name_len = data_len - 1;
-    char *name = malloc(name_len + 1);
-    bzero(name, name_len + 1);
-    memcpy(name, &data[2], name_len);
-
-    char addr[18];
-    ba2str(&info->bdaddr, addr);
-
-    printf("addr=%s name=%s\n", addr, name);
-
-    free(name);
-    }
-  else if(data[0] == EIR_FLAGS) {
-        printf("Flag type: len=%ld\n", data_len);
-        int i;
-        for(i=1; i<data_len; i++) {
-          printf("\tFlag data: 0x%0X\n", data[i]);
-          }
-        }
-      else if(data[0] == EIR_MANUFACTURE_SPECIFIC) {
-            printf("Manufacture specific type: len=%ld\n", data_len);
-
-            // TODO int company_id = data[current_index + 2] 
-
-            int i;
-            printf("Data:");
-            for(i=1; i<data_len; i++) { printf(" 0x%0X", data[i]); }
-            printf("\n");
-            }
-          else {
-            printf("Unknown type: type=%X\n", data[0]);
-            }
-}
 
 bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
@@ -417,7 +377,7 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
       
       switch (pSettings->proto[pSettings->map.bit_vars.bleIdx]) {
         case SERPROT_DSM:
-          decode_WNOSE(idx, sublen);    // FIX ME!!
+          //decode_WNOSE(idx, sublen);    // FIX ME!! Syncro errors!!
           break;
         
         case SERPROT_ESCORT:
@@ -435,6 +395,7 @@ bool GAP_Assigned_numbers(unsigned char idx, unsigned char sublen) {
       break;
       
     default:
+      DBG_MIN("le_adv_inf->data[idx] %d", le_adv_inf->data[idx]);
       bRet=FALSE;
       break;
     }
@@ -519,5 +480,42 @@ void decode_WNOSE(unsigned char idx, unsigned char sublen) {
   for (int n = i; n < i+sublen-FLAGS_LEN; n++) { printf(" %02d", (unsigned char)le_adv_inf->data[n]); }
   printf("\n");
   #endif
+}
+
+void process_data(uint8_t *data, size_t data_len, le_advertising_info *info) {
+  printf("Test: %p and %ld\n", data, data_len);
+  if(data[0] == EIR_NAME_SHORT || data[0] == EIR_NAME_COMPLETE) {
+    size_t name_len = data_len - 1;
+    char *name = malloc(name_len + 1);
+    bzero(name, name_len + 1);
+    memcpy(name, &data[2], name_len);
+
+    char addr[18];
+    ba2str(&info->bdaddr, addr);
+
+    printf("addr=%s name=%s\n", addr, name);
+
+    free(name);
+    }
+  else if(data[0] == EIR_FLAGS) {
+        printf("Flag type: len=%ld\n", data_len);
+        int i;
+        for(i=1; i<data_len; i++) {
+          printf("\tFlag data: 0x%0X\n", data[i]);
+          }
+        }
+      else if(data[0] == EIR_MANUFACTURE_SPECIFIC) {
+            printf("Manufacture specific type: len=%ld\n", data_len);
+
+            // TODO int company_id = data[current_index + 2] 
+
+            int i;
+            printf("Data:");
+            for(i=1; i<data_len; i++) { printf(" 0x%0X", data[i]); }
+            printf("\n");
+            }
+          else {
+            printf("Unknown type: type=%X\n", data[0]);
+            }
 }
 
