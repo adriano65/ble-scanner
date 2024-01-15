@@ -2,7 +2,7 @@
 objs/*
 *.log
 scanner
-./scanner.conf
+scanner.conf
 example
 advertisetest
 

@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
   pSettings->map.bit_vars.bScanEn=FALSE;
   pSettings->map.bit_vars.loglevel=LOG_DATA_AND_HEADER;
 
-  while ((opt = getopt(argc, argv, "?thnsS")) != -1) {		//: semicolon means that option need an arg!
+  while ((opt = getopt(argc, argv, "?thdsS")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 't' :
         pSettings->map.bit_vars.bTestMode=TRUE;
@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
       case 'h' :
         usage(argv);
         break ;
-      case 'n' :
+      case 'd' :
         lu0cfg.daemonize = TRUE;
         break ;
       case 'S' :
@@ -500,7 +500,7 @@ void usage(char * argv[]) {
   printf("Where [par]:\n") ;
   printf("\t-?\t\tThis help\n") ;
   printf("\t-t\t\tTest mode\n") ;
-  printf("\t-n\t\tRun as daemon\n") ;
+  printf("\t-d\t\tRun as daemon\n") ;
   printf("\t-S\t\tScan all ble around\n") ;
   printf("\t-s\t\tScan configured ble only\n") ;
   exit(0) ;
