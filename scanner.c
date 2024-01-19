@@ -38,7 +38,7 @@ _LUCONFIG lu0cfg;
 _ble_data ble_data;
 static _Settings *pSettings;
 static struct termios orig_term, raw_term;
-static pthread_mutex_t s_mutex;
+//static pthread_mutex_t s_mutex;
 
 struct CMDS Lu0cmds[] = {
     {"HCIDevNumber",            doHCIDevNumber, },

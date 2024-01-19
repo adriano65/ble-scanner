@@ -19,26 +19,48 @@
   #define DBG_MIN(fmt...) do { } while(0)
 #endif
 
+ADVCONFIG advcfg;
+
+/* sudo ./advertisetest -M 1000 -m 900 -s 2 -r */
 int main(int argc, char **argv){
   int dev_id, device_handle, opt;
-  unsigned char batt=37;
 	char tmpbuf[80];
   bdaddr_t bdaddr;
+  ADV_SIMULTYPE adv_simtype=ADV_SIM_NOSIM;
 
   if(geteuid() != 0) { printf("must run as root!\n"); return 0; }
 
-  while ((opt = getopt(argc, argv, "bhur")) != -1) {		//: semicolon means that option need an arg!
+  advcfg.batt=37;
+  advcfg.fuelLevelMax=MAXFUEL_LVL;
+  advcfg.fuelLevelMin=MINFUEL_LVL;
+  advcfg.fuelLevelStep=FUEL_LVL_STEP;  
+
+  while ((opt = getopt(argc, argv, "bhurM:m:s:")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 'b' :
-        batt=29;
+        advcfg.batt=29;
         break ;
       case 'u' :
         system("hciconfig hci0 up");
         break ;
+
+      case 'M' :
+        advcfg.fuelLevelMax=(unsigned int)strtol(optarg, NULL, 10);
+        break ;
+
+      case 'm' :
+        advcfg.fuelLevelMin=(unsigned int)strtol(optarg, NULL, 10);
+        break ;
+
       case 'r' :
         sprintf(tmpbuf, "hciconfig hci0 reset");
         //printf("%s\n", tmpbuf);
         system(tmpbuf);
+        break ;
+      case 's' :
+        advcfg.fuelLevelStep=(unsigned int)strtol(optarg, NULL, 10);
+        adv_simtype=ADV_SIM_FUELSTEAL;
+        printf("Fuel Steal simulation\n");
         break ;
       case 'h' :
         usage(argv);
@@ -64,7 +86,7 @@ int main(int argc, char **argv){
   if((device_handle = hci_open_dev(dev_id)) < 0) { perror("Could not open device"); exit(1); }
 
   set_Advertising_Parameters(dev_id, device_handle);
-  set_Advertising_Data(dev_id, device_handle, MAXFUEL_LVL, batt);
+  set_Advertising_Data(dev_id, device_handle);
   
   #if 0
   unsigned int *uuid = uuid_str_to_data(argv[1]);
@@ -106,11 +128,13 @@ int main(int argc, char **argv){
 
   set_Advertising_Enable(dev_id, device_handle);
   DBG_MIN("Advertising enabled on hci%d", dev_id);
+  switch (adv_simtype) {
+    case ADV_SIM_FUELSTEAL:
+      fuelStealSimulator(dev_id, device_handle);
+      break;
 
-  for (unsigned int n=MAXFUEL_LVL; n >(MAXFUEL_LVL-1000); n-=200) {
-    sleep(20);
-    set_Advertising_Data(dev_id, device_handle, n, batt);
-    DBG_MIN("fuel %i", n);
+    default:
+      break;
     }
 
   #if 0
@@ -171,7 +195,7 @@ void set_Advertising_Parameters(int dev_id, int device_handle) {
 3.   HCI_LE_Set_Scan_Response_Data - Used to set the data used in scanning packets that have a data field.
 4.   HCI_LE_Set_Advertise_Enable - Turn on Advertising.
 */
-void set_Advertising_Data(int dev_id, int device_handle, unsigned int fuel, unsigned char batt) {
+void set_Advertising_Data(int dev_id, int device_handle) {
   uint8_t segment_length;
   int ret;
   le_set_advertising_data_cp adv_data_cp;
@@ -206,10 +230,10 @@ void set_Advertising_Data(int dev_id, int device_handle, unsigned int fuel, unsi
   //adv_data_cp.data[adv_data_cp.length + segment_length] = htobs(0xFE); segment_length++;    // Big Endian Fuel
   //adv_data_cp.data[adv_data_cp.length + segment_length] = htobs(0x04); segment_length++;    // Big Endian Fuel
 
-  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs((unsigned char)(fuel & 0x00FF)); segment_length++;    // Big Endian Fuel low
-  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs((unsigned char)((fuel & 0xFF00)>>8)); segment_length++;    // Big Endian Fuel high
+  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs((unsigned char)(advcfg.fuel & 0x00FF)); segment_length++;    // Big Endian Fuel low
+  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs((unsigned char)((advcfg.fuel & 0xFF00)>>8)); segment_length++;    // Big Endian Fuel high
 
-  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs(batt); segment_length++;    // battery
+  adv_data_cp.data[adv_data_cp.length + segment_length] = htobs(advcfg.batt); segment_length++;    // battery
 
   adv_data_cp.data[adv_data_cp.length + segment_length] = htobs(0x17); segment_length++;    // temperature
 
@@ -268,6 +292,15 @@ void set_Advertising_Enable(int dev_id, int device_handle) {
     }
 }
 
+void fuelStealSimulator(int dev_id, int device_handle){
+  for (advcfg.fuel=advcfg.fuelLevelMax; advcfg.fuel >advcfg.fuelLevelMin; advcfg.fuel-=advcfg.fuelLevelStep) {
+    sleep(20);
+    set_Advertising_Data(dev_id, device_handle);
+    DBG_MIN("MAXFUEL_LVL %i, MINFUEL_LVL %i, actual fuel %i, actual batt %i", advcfg.fuelLevelMax, advcfg.fuelLevelMin, advcfg.fuel, advcfg.batt);
+    }
+
+}
+
 
 unsigned int *uuid_str_to_data(char *uuid) {
   char conv[] = "0123456789ABCDEF";
@@ -293,6 +326,10 @@ void usage(char * argv[]) {
   printf("\t-?\t\tThis help\n") ;
   printf("\t-b\t\tset battery level to 2.9 V\n") ;
   printf("\t-r\t\treset hci0\n") ;
+  printf("\t-M max\t\tFuel MAX\n") ;
+  printf("\t-m min step\t\tFuel MIN\n") ;
+  printf("\t-s step\t\tFuel STEP\n") ;
+  printf("\t-u\t\tswitch on hci0\n") ;
   exit(0) ;
 }
 

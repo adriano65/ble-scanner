@@ -238,7 +238,7 @@ int ble_show_rxbuf(le_advertising_info * le_adv_info) {
 
 int ble_fill_rxbuf(le_advertising_info * le_adv_info) {
   _Settings *pSettings = (_Settings *)lu0cfg.Settings;
-  char addr[18];
+  //char addr[18];
 
   DBG_MAX(".");
   for (pSettings->map.bit_vars.bleIdx=0; pSettings->map.bit_vars.bleIdx < 4; pSettings->map.bit_vars.bleIdx++) {
