@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <sys/ioctl.h>
+#include <gnu/libc-version.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -35,11 +36,17 @@ int main(int argc, char **argv){
   advcfg.fuelLevelMin=MINFUEL_LVL;
   advcfg.fuelLevelStep=FUEL_LVL_STEP;  
 
-  while ((opt = getopt(argc, argv, "bhurM:m:s:")) != -1) {		//: semicolon means that option need an arg!
+  while ((opt = getopt(argc, argv, "bfhurM:m:s:")) != -1) {		//: semicolon means that option need an arg!
     switch(opt) {
       case 'b' :
         advcfg.batt=29;
         break ;
+
+      case 'f' :
+        advcfg.fuelLevelStep=(unsigned int)strtol(optarg, NULL, 10);
+        adv_simtype=ADV_SIM_FUELFILL;
+        break ;
+
       case 'u' :
         system("hciconfig hci0 up");
         break ;
@@ -57,25 +64,24 @@ int main(int argc, char **argv){
         //printf("%s\n", tmpbuf);
         system(tmpbuf);
         break ;
+
       case 's' :
         advcfg.fuelLevelStep=(unsigned int)strtol(optarg, NULL, 10);
         adv_simtype=ADV_SIM_FUELSTEAL;
-        printf("Fuel Steal simulation\n");
         break ;
+
       case 'h' :
         usage(argv);
         break ;
-      /*
-      case 'd' :
-        lu0cfg.daemonize = TRUE;
-        break ;
-      */
+
       default:
         usage(argv);
         break ;
         }
     }
 
+  DBG_MIN(MYNAME" daemon - rel. %d.%02d, libc_version %s", SOFTREL, SUBSREL, gnu_get_libc_version());
+  
   //dev_id = hci_for_each_dev(HCI_UP, find_conn, (long) &bdaddr);
   str2ba("00:13:25:AB:F2:D2", &bdaddr);     // my address 001325ABF2D2
   if ((dev_id = hci_get_route(&bdaddr)) < 0) {
@@ -131,6 +137,10 @@ int main(int argc, char **argv){
   switch (adv_simtype) {
     case ADV_SIM_FUELSTEAL:
       fuelStealSimulator(dev_id, device_handle);
+      break;
+
+    case ADV_SIM_FUELFILL:
+      fuelFilllSimulator(dev_id, device_handle);
       break;
 
     default:
@@ -293,14 +303,22 @@ void set_Advertising_Enable(int dev_id, int device_handle) {
 }
 
 void fuelStealSimulator(int dev_id, int device_handle){
+  DBG_MIN("Fuel Steal simulation");
   for (advcfg.fuel=advcfg.fuelLevelMax; advcfg.fuel >advcfg.fuelLevelMin; advcfg.fuel-=advcfg.fuelLevelStep) {
     sleep(20);
     set_Advertising_Data(dev_id, device_handle);
     DBG_MIN("MAXFUEL_LVL %i, MINFUEL_LVL %i, actual fuel %i, actual batt %i", advcfg.fuelLevelMax, advcfg.fuelLevelMin, advcfg.fuel, advcfg.batt);
     }
-
 }
 
+void fuelFilllSimulator(int dev_id, int device_handle){
+  DBG_MIN("Fuel Fill simulation");
+  for (advcfg.fuel=advcfg.fuelLevelMax; advcfg.fuel >advcfg.fuelLevelMin; advcfg.fuel+=advcfg.fuelLevelStep) {
+    sleep(20);
+    set_Advertising_Data(dev_id, device_handle);
+    DBG_MIN("MAXFUEL_LVL %i, MINFUEL_LVL %i, actual fuel %i, actual batt %i", advcfg.fuelLevelMax, advcfg.fuelLevelMin, advcfg.fuel, advcfg.batt);
+    }
+}
 
 unsigned int *uuid_str_to_data(char *uuid) {
   char conv[] = "0123456789ABCDEF";
@@ -349,10 +367,10 @@ void pdebug(const char * fn, char * format, ...) {
     time_t now = time (0);
     sTm = gmtime (&now);
 
-    //strftime (datetimebuff, sizeof(datetimebuff), "%Y%m%dT%H%M%S", sTm);
+    strftime (datetimebuff, sizeof(datetimebuff), "%Y%m%dT%H%M%S", sTm);
     //strftime (datetimebuff, sizeof(datetimebuff), "%Y%m%d, %H%M%S", sTm);
-    strftime (datetimebuff, sizeof(datetimebuff), "%Y%m%d,%H:%M:%S", sTm);
-    #define STROUTPUT "%s,%s, %s\n"
+    //strftime (datetimebuff, sizeof(datetimebuff), "%Y%m%d %H:%M:%S", sTm);
+    #define STROUTPUT "%s - %s: %s\n"
     printf(STROUTPUT, datetimebuff, fn, buffer);
 
     va_end(args);

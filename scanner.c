@@ -33,7 +33,6 @@
   #define DBG_MAX(fmt...) do { } while(0)
 #endif
 
-char banner[] = { 'S', 'C', 'A', 'N', 'N', 'E', 'R', ' ', 'v', SOFTREL+'0', '.', (SUBSREL>>4)+'0', (SUBSREL & 15)+'0', 0 };
 _LUCONFIG lu0cfg;
 _ble_data ble_data;
 static _Settings *pSettings;
@@ -102,7 +101,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-  printf("\n%s\nLoad configuration...\n%s\n", banner, lu0cfg.daemonize ? "Log to file" : "Log to stdout");
+  printf(MYNAME" - rel. %d.%02d\nLoad configuration...\n%s\n", SOFTREL, SUBSREL, lu0cfg.daemonize ? "Log to file" : "Log to stdout");
   if (LoadConfig(&lu0cfg)) { DBG_MIN("Bad or missing configuration file"); return FALSE; }
   if(geteuid() != 0) { printf("must run as root!\n"); return 0; }
 

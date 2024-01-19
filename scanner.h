@@ -4,9 +4,6 @@
 #include "stdint.h"
 #include "stdbool.h"
 
-#define SOFTREL 0x00	  // Software release
-#define SUBSREL 0x03    // Software subrelease
-
 typedef enum _SERIAL_PROTO {
 	SERPROT_DISABLED = 0,
 	SERPROT_RK03Y,
@@ -41,16 +38,16 @@ typedef struct _ble_dat {
 } _ble_data;
 
 struct _serprot_bits {
-        uint8_t bScanMode  : 1;
-        uint8_t bTestMode  : 1;
-        uint8_t bScanEn  : 1;
-        uint8_t bleIdx  : 3;
-        _LOGTYPE loglevel  : 2;
+  uint8_t bScanMode  : 1;
+  uint8_t bTestMode  : 1;
+  uint8_t bScanEn  : 1;
+  uint8_t bleIdx  : 3;
+  _LOGTYPE loglevel  : 2;
 };
 
 union _serprot_map {
-        uint8_t bits;             // data input as 8-bit char
-        struct _serprot_bits bit_vars;      // data output as single bit field.
+  uint8_t bits;             // data input as 8-bit char
+  struct _serprot_bits bit_vars;      // data output as single bit field.
 };
 
 typedef struct __Settings {

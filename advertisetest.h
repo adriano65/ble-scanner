@@ -20,7 +20,8 @@
 typedef enum _ADV_SIMULTYPE {
 	ADV_SIM_NOSIM,
 	ADV_SIM_FUELSTEAL,
-	ADV_SIM_FUELUP,
+	ADV_SIM_FUELFILL,
+	ADV_SIM_END,
 } ADV_SIMULTYPE;
 
 typedef struct _ADVCONFIG {
@@ -44,5 +45,6 @@ void set_Advertising_Parameters(int device_id, int device_handle);
 void set_Advertising_Data(int dev_id, int device_handle);
 void set_Advertising_Enable(int device_id, int device_handle);
 void fuelStealSimulator(int dev_id, int device_handle);
+void fuelFilllSimulator(int dev_id, int device_handle);
 
 #endif
